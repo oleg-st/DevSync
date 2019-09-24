@@ -1,0 +1,9 @@
+DevSync/bin/
+DevSync/obj/
+DevSyncAgent/obj/
+DevSyncAgent/obj/
+DevSyncLib/bin/
+DevSyncLib/obj/
+.vs
+*.user
+DevSync/Properties/launchSettings.json
