@@ -75,7 +75,7 @@ namespace DevSyncLib.Command
             int totalRead = 0;
             while (count > 0)
             {
-                if (_chunkPosition == _chunkLength)
+                if (_chunkPosition >= _chunkLength)
                 {
                     ReadChunk();
                 }

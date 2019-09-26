@@ -25,7 +25,10 @@ namespace DevSync
 
         private readonly AgentStarter _agentStarter;
 
-        private const int CHANGES_CHUNK_SIZE = 1000;
+        // max items in chunk
+        private const int CHANGES_MAX_COUNT = 10000;
+        // max items body size in chunk (soft limit)
+        private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
 
         public Sender(string srcPath, string destPath, List<string> excludeList = null, bool deployAgent = false)
         {
@@ -60,20 +63,27 @@ namespace DevSync
             var task = Task.Run(() =>
             {
                 scanDirectory.Run(_srcPath, _excludeList);
+                Console.WriteLine($"Scanned local {scanDirectory.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
             });
             var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest());
+            Console.WriteLine($"Scanned remote {response.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
             task.Wait();
 
             var srcList = scanDirectory.FileList;
             var destList = response.FileList;
-           
+
+            long totalSize = 0;
+            int itemsCount = 0;
             foreach (var srcEntry in srcList.Values)
             {
                 destList.TryGetValue(srcEntry.Path, out var destEntry);
                 // add to changes
                 if (!srcEntry.Compare(destEntry))
                 {
-                    AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = srcEntry });
+                    var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
+                    itemsCount++;
+                    totalSize += fsChange.BodySize;
+                    AddChange(fsChange);
                 }
 
                 // remove from dest list
@@ -86,6 +96,7 @@ namespace DevSync
             // delete
             foreach (var destEntry in destList.Values)
             {
+                itemsCount++;
                 AddChange(new FsChange { ChangeType = FsChangeType.Remove, FsEntry = destEntry });
             }
 
@@ -93,8 +104,9 @@ namespace DevSync
             lock (_changes)
             {
                 UpdateHasWork();
-                Console.WriteLine($"Scanned {_changes.Count} in {sw.ElapsedMilliseconds} ms");
             }
+
+            Console.WriteLine($"Scanned {itemsCount} items, {PrettySize(totalSize)} to send in {sw.ElapsedMilliseconds} ms");
         }
 
         private void AddChange(FsChange fsChange)
@@ -237,8 +249,9 @@ namespace DevSync
             {
                 BasePath = _srcPath
             };
-            
+
             // fetch changes
+            long totalSize = 0;
             lock (_changes)
             {
                 if (_changes.Count == 0)
@@ -246,10 +259,20 @@ namespace DevSync
                     return true;
                 }
 
-                applyRequest.Changes = _changes.Values.Take(CHANGES_CHUNK_SIZE).ToList();
-            }
+                applyRequest.Changes = new List<FsChange>(CHANGES_MAX_COUNT);
+                int itemsCount = 0;
+                foreach (var fsChange in _changes.Values)
+                {
+                    if (itemsCount >= CHANGES_MAX_COUNT || totalSize >= CHANGES_MAX_SIZE)
+                    {
+                        break;
+                    }
 
-            long totalSize = applyRequest.Changes.Where(x => x.HasBody).Sum(x => x.FsEntry.Length);
+                    applyRequest.Changes.Add(fsChange);
+                    itemsCount++;
+                    totalSize += fsChange.BodySize;
+                }
+            }
 
             if (applyRequest.Changes.Count == 1)
             {

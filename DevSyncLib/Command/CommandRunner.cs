@@ -34,6 +34,11 @@ namespace DevSyncLib.Command
                         throw new SyncException($"Unknown command {request.GetType()}");
                 }
             }
+            catch (EndOfStreamException)
+            {
+                // end of data
+                throw;
+            }
             catch (SyncException ex)
             {
                 return new ErrorResponse { Message = ex.Message, Recoverable = ex.Recoverable };
@@ -87,7 +92,6 @@ namespace DevSyncLib.Command
         protected ApplyResponse RunApply(ApplyRequest applyRequest)
         {
             CheckInitialized();
-
             applyRequest.BasePath = _path;
             var response = new ApplyResponse {Result = applyRequest.ReadAndApplyChanges()};
             return response;

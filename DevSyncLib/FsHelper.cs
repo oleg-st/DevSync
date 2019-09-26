@@ -27,7 +27,6 @@ namespace DevSyncLib
                 catch (Exception ex)
                 {
                     exception = ex;
-                    Logger.Log($"Delete error {ex}");
                     return false;
                 }
             }
@@ -47,7 +46,6 @@ namespace DevSyncLib
                 catch (Exception ex)
                 {
                     exception = ex;
-                    Logger.Log($"Delete error {ex}");
                     return false;
                 }
             }

@@ -43,7 +43,6 @@ namespace DevSyncLib.Command
                         }
                         catch (Exception ex)
                         {
-                            Logger.Log($"Apply dir error: {ex}");
                             error = ex.Message;
                             resultCode = FsChangeResultCode.Error;
                         }
@@ -65,21 +64,16 @@ namespace DevSyncLib.Command
 
                                 try
                                 {
-                                    try
-                                    {
-                                        Directory.CreateDirectory(directoryName);
-                                        using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write,
-                                            FileShare.Read))
-                                        {
-                                            bodyReadSuccess = Reader.ReadFsChangeBody(fs, fsChange.FsEntry.Length);
-                                        }
-                                    }
-                                    catch (Exception)
-                                    {
-                                        // skip body
-                                        Reader.ReadFsChangeBody(null, fsChange.FsEntry.Length);
-                                        throw;
-                                    }
+                                    Directory.CreateDirectory(directoryName);
+                                    using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write,
+                                        FileShare.Read);
+                                    bodyReadSuccess = Reader.ReadFsChangeBody(fs, fsChange.FsEntry.Length);
+                                }
+                                catch (Exception)
+                                {
+                                    // skip body
+                                    Reader.ReadFsChangeBody(null, fsChange.FsEntry.Length);
+                                    throw;
                                 }
                                 finally
                                 {
@@ -108,6 +102,7 @@ namespace DevSyncLib.Command
                                 using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
                                 {
                                 }
+
                                 bodyReadSuccess = true;
                             }
 
@@ -123,10 +118,14 @@ namespace DevSyncLib.Command
                                 resultCode = FsChangeResultCode.SenderError;
                             }
                         }
+                        catch (EndOfStreamException)
+                        {
+                            // end of data
+                            throw;
+                        }
                         catch (Exception ex)
                         {
                             resultCode = FsChangeResultCode.Error;
-                            Logger.Log($"Apply file error: {ex}");
                             error = ex.Message;
                         }
 
@@ -152,7 +151,6 @@ namespace DevSyncLib.Command
                         }
                         catch (Exception ex)
                         {
-                            Logger.Log($"Apply rename error: {ex}");
                             error = ex.Message;
                             resultCode = FsChangeResultCode.Error;
                         }

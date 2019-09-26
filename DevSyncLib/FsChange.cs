@@ -5,6 +5,7 @@
         public FsChangeType ChangeType;
         public FsEntry FsEntry;
         public FsEntry OldFsEntry;
+        public long BodySize => HasBody ? FsEntry.Length : 0;
         public bool HasBody => ChangeType == FsChangeType.Change && FsEntry.Length > 0;
         // change is expired -> ignore it
         public bool Expired;
