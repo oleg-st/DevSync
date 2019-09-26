@@ -28,7 +28,7 @@ namespace DevSyncLib.Command
                 var read = _baseStream.Read(buffer, offset, count);
                 if (read == 0)
                 {
-                    throw new EndOfStreamException($"Premature end of stream ({offset}, {count}, {_chunkLength})");
+                    throw new SyncException("Connection closed", true);
                 }
 
                 offset += read;

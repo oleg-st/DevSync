@@ -134,7 +134,6 @@ namespace DevSync
                 {
                     Console.Error.WriteLine($"Agent died with exit code {_sshCommand.ExitStatus}");
                     _sshCommand.Dispose();
-                    _sshCommand = null;
                     IsStarted = false;
                 });
 

@@ -372,6 +372,7 @@ namespace DevSync
                     {
                         break;
                     }
+                    hasErrors = true;
                 }
                 catch (Exception ex)
                 {

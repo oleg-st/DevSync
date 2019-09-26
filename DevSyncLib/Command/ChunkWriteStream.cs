@@ -38,8 +38,15 @@ namespace DevSyncLib.Command
                 span[3] |= 0x80;
             }
             // write length and data
-            _baseStream.Write(span.Slice(0, LENGTH_SIZE + length));
-            _baseStream.Flush();
+            try
+            {
+                _baseStream.Write(span.Slice(0, LENGTH_SIZE + length));
+                _baseStream.Flush();
+            }
+            catch (EndOfStreamException)
+            {
+                throw new SyncException("Connection closed", true);
+            }
         }
 
         protected bool TryCompressBrotli(out int written)
