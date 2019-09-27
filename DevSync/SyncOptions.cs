@@ -13,6 +13,8 @@ namespace DevSync
         public string DestinationPath { get; set; }
         public List<string> ExcludeList { get; set; } = new List<string>();
 
+        public bool DeployAgent { get; set; }
+
         public static SyncOptions CreateFromSourceAndDestination(string sourcePath, string destinationPath)
         {
             if (string.IsNullOrWhiteSpace(sourcePath))
@@ -108,5 +110,10 @@ namespace DevSync
                                 !string.IsNullOrWhiteSpace(DestinationPath) &&
                                 !string.IsNullOrWhiteSpace(UserName) &&
                                 !string.IsNullOrWhiteSpace(Host);
+
+        public override string ToString()
+        {
+            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(DeployAgent ? ", deploy" : "")}";
+        }
     }
 }

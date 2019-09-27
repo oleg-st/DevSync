@@ -121,7 +121,7 @@ namespace DevSync
             Cleanup();
         }
 
-        public static AgentStarter Create(SyncOptions syncOptions, List<string> excludeList, bool deployAgent, ILogger logger)
+        public static AgentStarter Create(SyncOptions syncOptions, ILogger logger)
         {
             AgentStarter agentStarter;
             
@@ -135,12 +135,12 @@ namespace DevSync
                 {
                     Host = syncOptions.Host,
                     Username = syncOptions.UserName,
-                    DeployAgent = deployAgent
+                    DeployAgent = syncOptions.DeployAgent
                 };
             }
 
             agentStarter.DestPath = syncOptions.DestinationPath;
-            agentStarter.ExcludeList = excludeList;
+            agentStarter.ExcludeList = syncOptions.ExcludeList;
             return agentStarter;
         }
     }

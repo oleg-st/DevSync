@@ -1,6 +1,8 @@
 ﻿using System;
+using System.IO;
 using CommandLine;
 using CommandLine.Text;
+using DevSyncLib;
 using DevSyncLib.Logger;
 
 namespace DevSync
@@ -14,6 +16,12 @@ namespace DevSync
 
             [Value(1, HelpText = "Destination path", MetaName = "destination")]
             public string DestinationPath { get; set; }
+
+            [Value(2, HelpText = "Exclude list file", MetaName = "exclude")]
+            public string ExcludeListPath { get; set; }
+
+            [Option("no-exclude", Default = false, HelpText = "Do not exclude")]
+            public bool NoExclude { get; set; }
 
             [Option("deploy", Default = false, HelpText = "Deploy agent to ~/.devsync")]
             public bool DeployAgent { get; set; }
@@ -29,7 +37,7 @@ namespace DevSync
             optionsUsage.Copyright = "by Oleg Stepanischev";
             optionsUsage.AdditionalNewLineAfterOption = false;
             optionsUsage.AddDashesToOption = true;
-            optionsUsage.AddPreOptionsLine("Usage: dotnet DevSync.dll <source> <destination> [options]");
+            optionsUsage.AddPreOptionsLine("Usage: dotnet DevSync.dll <source> <destination> <exclude file> [options]");
             optionsUsage.AddPreOptionsLine("       dotnet DevSync.dll --realsync <source> [options]");
             optionsUsage.AddPreOptionsLine("Options:");
             optionsUsage.AddOptions(parserResult);
@@ -37,7 +45,39 @@ namespace DevSync
             Environment.Exit(-1);
         }
 
-        static void Main(string[] args)
+        private static SyncOptions GetSyncOptions(CommandLineOptions options)
+        {
+            SyncOptions syncOptions = null;
+
+            if (!string.IsNullOrEmpty(options.RealsyncPath))
+            {
+                syncOptions = SyncOptions.CreateFromRealsyncDirectory(options.RealsyncPath);
+
+            }
+            else if (!string.IsNullOrEmpty(options.SourcePath) && !string.IsNullOrEmpty(options.DestinationPath))
+            {
+                syncOptions = SyncOptions.CreateFromSourceAndDestination(options.SourcePath, options.DestinationPath);
+                if (!options.NoExclude && !string.IsNullOrEmpty(options.ExcludeListPath))
+                {
+                    syncOptions.ExcludeList.AddRange(File.ReadAllLines(options.ExcludeListPath));
+                }
+            }
+
+            if (syncOptions == null)
+            {
+                return null;
+            }
+
+            if (!options.NoExclude && syncOptions.ExcludeList.Count == 0)
+            {
+                throw new SyncException("Empty exclude list, specify --no-exclude if it is intended");
+            }
+
+            syncOptions.DeployAgent = options.DeployAgent;
+            return syncOptions;
+        }
+
+        private static void Main(string[] args)
         {
             var logger = new ConsoleLogger();
 
@@ -56,33 +96,14 @@ namespace DevSync
             {
                 try
                 {
-                    SyncOptions syncOptions = null;
-
-                    if (!string.IsNullOrEmpty(options.RealsyncPath))
-                    {
-                        syncOptions = SyncOptions.CreateFromRealsyncDirectory(options.RealsyncPath);
-
-                    }
-                    else if (!string.IsNullOrEmpty(options.SourcePath) && !string.IsNullOrEmpty(options.DestinationPath))
-                    {
-                        syncOptions =
-                            SyncOptions.CreateFromSourceAndDestination(options.SourcePath, options.DestinationPath);
-                        // TODO: remove hardcoded exclude list
-                        syncOptions.ExcludeList.AddRange(new []
-                        {
-                            "~*", "*.tmp", "*.pyc", "*.swp", ".git", "CVS", ".svn", ".realsync", ".cache", ".idea", "nbproject",
-                            "config_cache.inc",
-                            "admin/tools/sql", "include/9", "tmp", "tmp-project", "node_modules", "js/vue/build", "storage",
-                            "var/log", "var/medo", "courses"
-                        });
-                    }
-
+                    var syncOptions = GetSyncOptions(options);
                     if (syncOptions == null)
                     {
                         PrintHelp(parserResult);
+                        return;
                     }
 
-                    using var sender = new Sender(syncOptions, options.DeployAgent, logger);
+                    using var sender = new Sender(syncOptions, logger);
                     sender.Run();
                 }
                 catch (Exception ex)

@@ -32,7 +32,7 @@ namespace DevSync
         // max items body size in chunk (soft limit)
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
 
-        public Sender(SyncOptions syncOptions, bool deployAgent, ILogger logger)
+        public Sender(SyncOptions syncOptions, ILogger logger)
         {
             _logger = logger;
 
@@ -48,7 +48,8 @@ namespace DevSync
             _changes = new Dictionary<string, FsChange>();
             _needScan = true;
             _autoResetEvent = new AutoResetEvent(false);
-            _agentStarter = AgentStarter.Create(syncOptions, _excludeList.GetList(), deployAgent, _logger);
+            _agentStarter = AgentStarter.Create(syncOptions, _logger);
+            _logger.Log($"Sync {syncOptions}");
         }
 
         private void Scan()

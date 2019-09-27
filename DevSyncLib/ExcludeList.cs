@@ -12,7 +12,7 @@ namespace DevSyncLib
 
         protected string MaskToRegex(string mask)
         {
-            var re = Regex.Escape(FsEntry.NormalizePath(mask))
+            var re = Regex.Escape(FsEntry.NormalizePath(mask.Trim()))
                 // *
                 .Replace("\\*", "[^/]*")
                 // ?
@@ -42,7 +42,10 @@ namespace DevSyncLib
         public bool SetList(List<string> list)
         {
             _masks.Clear();
-            var re = list.Count > 0 ? list.Select(MaskToRegex).Aggregate((current, next) => current + "|" + next) : null;
+            var re = list.Count > 0 ? list.Select(MaskToRegex)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Aggregate((current, next) => current + "|" + next)
+                : null;
             try
             {
                 _regex = string.IsNullOrEmpty(re) ? null : new Regex(re, RegexOptions.Compiled);
