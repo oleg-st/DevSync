@@ -67,9 +67,9 @@ namespace DevSyncLib.Command
         public FsChange ReadFsChange()
         {
             var changeType = (FsChangeType) ReadByte();
-            if (changeType == FsChangeType.End)
+            if (changeType == FsChangeType.EndMarker)
             {
-                return FsChange.EndChange;
+                return FsChange.EndMarkerChange;
             }
             var fsChange = new FsChange
             {
@@ -83,9 +83,9 @@ namespace DevSyncLib.Command
         public FsChangeResult ReadFsChangeResult()
         {
             var changeType = (FsChangeType)ReadByte();
-            if (changeType == FsChangeType.End)
+            if (changeType == FsChangeType.EndMarker)
             {
-                return FsChangeResult.EndChange;
+                return FsChangeResult.EndChangeMarker;
             }
 
             var fsChangeResult = new FsChangeResult

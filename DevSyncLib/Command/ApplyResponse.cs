@@ -14,7 +14,7 @@ namespace DevSyncLib.Command
             while (true)
             {
                 var fsChangeResult = reader.ReadFsChangeResult();
-                if (fsChangeResult.IsEnd)
+                if (fsChangeResult.IsEndMarker)
                 {
                     break;
                 }
@@ -28,7 +28,7 @@ namespace DevSyncLib.Command
             {
                 writer.WriteFsChangeResult(fsChangeResult);
             }
-            writer.WriteFsChangeResult(FsChangeResult.EndChange);
+            writer.WriteFsChangeResult(FsChangeResult.EndChangeMarker);
         }
     }
 }

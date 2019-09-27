@@ -64,7 +64,7 @@ namespace DevSyncLib.Command
         public void WriteFsChange(FsChange fsChange)
         {
             WriteByte((byte)fsChange.ChangeType);
-            if (fsChange.IsEnd)
+            if (fsChange.IsEndMarker)
             {
                 return;
             }
@@ -78,7 +78,7 @@ namespace DevSyncLib.Command
         public void WriteFsChangeResult(FsChangeResult fsChangeResult)
         {
             WriteByte((byte)fsChangeResult.ChangeType);
-            if (fsChangeResult.IsEnd)
+            if (fsChangeResult.IsEndMarker)
             {
                 return;
             }
