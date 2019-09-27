@@ -51,7 +51,6 @@ namespace DevSyncLib
             }
             catch (Exception)
             {
-                Console.Error.WriteLine($"Invalid exclude list: {re}");
                 _regex = null;
                 return false;
             }

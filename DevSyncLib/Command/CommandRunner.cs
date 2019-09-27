@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace DevSyncLib.Command
 {
@@ -73,7 +74,10 @@ namespace DevSyncLib.Command
         protected InitResponse RunInit(InitRequest request)
         {
             _path = request.AgentOptions.DestPath;
-            _excludeList.SetList(request.AgentOptions.ExcludeList);
+            if (!_excludeList.SetList(request.AgentOptions.ExcludeList))
+            {
+                throw new SyncException($"Invalid exclude list {request.AgentOptions.ExcludeList.Aggregate((x, y) => x + ", " + y) ?? ""}");
+            }
 
             if (string.IsNullOrEmpty(_path) || _path == "/")
             {
