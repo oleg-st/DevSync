@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using DevSyncLib;
 using DevSyncLib.Command;
+using DevSyncLib.Logger;
 using ICSharpCode.SharpZipLib.Tar;
 using Renci.SshNet;
 using Renci.SshNet.Common;
@@ -84,7 +85,7 @@ namespace DevSync
                 }
             }
 
-            Console.WriteLine($"Deployed agent in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Deployed agent in {sw.ElapsedMilliseconds} ms");
         }
 
         public override void DoStart()
@@ -113,7 +114,7 @@ namespace DevSync
                 _sshClient.Connect();
                 _sshClient.ErrorOccurred += (sender, args) =>
                 {
-                    Console.Error.WriteLine(args.Exception.Message);
+                    Logger.Log(args.Exception.Message, LogLevel.Error);
                     IsStarted = false;
                 };
 
@@ -132,17 +133,21 @@ namespace DevSync
                     _sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {deployPath}/DevSyncAgent.dll");
                 _sshCommand.BeginExecute(ar =>
                 {
-                    Console.Error.WriteLine($"Agent died with exit code {_sshCommand.ExitStatus}");
+                    Logger.Log($"Agent died with exit code {_sshCommand.ExitStatus}", LogLevel.Error);
                     _sshCommand.Dispose();
                     IsStarted = false;
                 });
 
-                PacketStream = new PacketStream(_sshCommand.OutputStream, _sshCommand.InputStream);
+                PacketStream = new PacketStream(_sshCommand.OutputStream, _sshCommand.InputStream, Logger);
             }
             catch (SshAuthenticationException ex)
             {
                 throw new SyncException(ex.Message);
             }
+        }
+
+        public AgentStarterSsh(ILogger logger) : base(logger)
+        {
         }
     }
 }

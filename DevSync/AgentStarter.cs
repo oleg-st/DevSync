@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using DevSyncLib;
 using DevSyncLib.Command;
+using DevSyncLib.Logger;
 
 namespace DevSync
 {
@@ -16,6 +17,13 @@ namespace DevSync
         protected List<string> ExcludeListValue;
 
         public bool IsStarted { get; protected set; }
+
+        protected ILogger Logger { get; set; }
+
+        protected AgentStarter(ILogger logger)
+        {
+            Logger = logger;
+        }
 
         public string DestPath
         {
@@ -45,7 +53,7 @@ namespace DevSync
                 DoStart();
                 IsStarted = true;
                 IsInitialized = false;
-                Console.WriteLine($"Started in {sw.ElapsedMilliseconds} ms");
+                Logger.Log($"Started in {sw.ElapsedMilliseconds} ms");
             }
             catch (Exception)
             {
@@ -70,7 +78,7 @@ namespace DevSync
                 throw new SyncException("Agent initialize failed");
             }
             IsInitialized = true;
-            Console.WriteLine($"Initialized in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Initialized in {sw.ElapsedMilliseconds} ms");
         }
 
         public abstract void DoStart();
@@ -113,25 +121,25 @@ namespace DevSync
             Cleanup();
         }
 
-        public static AgentStarter Create(SyncPath syncPath, List<string> excludeList, bool deployAgent)
+        public static AgentStarter Create(SyncOptions syncOptions, List<string> excludeList, bool deployAgent, ILogger logger)
         {
             AgentStarter agentStarter;
             
-            if (string.IsNullOrEmpty(syncPath.Host))
+            if (string.IsNullOrEmpty(syncOptions.Host))
             {
-                agentStarter = new AgentStarterLocal();
+                agentStarter = new AgentStarterLocal(logger);
             }
             else
             {
-                agentStarter = new AgentStarterSsh
+                agentStarter = new AgentStarterSsh(logger)
                 {
-                    Host = syncPath.Host,
-                    Username = syncPath.UserName,
+                    Host = syncOptions.Host,
+                    Username = syncOptions.UserName,
                     DeployAgent = deployAgent
                 };
             }
 
-            agentStarter.DestPath = syncPath.Path;
+            agentStarter.DestPath = syncOptions.DestinationPath;
             agentStarter.ExcludeList = excludeList;
             return agentStarter;
         }

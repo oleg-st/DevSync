@@ -31,7 +31,7 @@ namespace DevSyncLib.Command
                 var read = _baseStream.Read(buffer, offset, count);
                 if (read == 0)
                 {
-                    throw new SyncException("Connection closed", true);
+                    throw new EndOfStreamException("Connection closed");
                 }
 
                 offset += read;

@@ -2,17 +2,20 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
     public class CommandRunner
     {
+        private readonly ILogger _logger;
         private string _path;
         private bool _initialized;
         private readonly ExcludeList _excludeList;
 
-        public CommandRunner()
+        public CommandRunner(ILogger logger)
         {
+            _logger = logger;
             _excludeList = new ExcludeList();
         }
 
@@ -62,13 +65,10 @@ namespace DevSyncLib.Command
         {
             CheckInitialized();
 
-            var scanDirectory = new ScanDirectory();
-            scanDirectory.Run(_path, _excludeList);
-
-            return new ScanResponse
-            {
-                FileList = scanDirectory.FileList
-            };
+            var scanResponse = new ScanResponse();
+            var scanDirectory = new ScanDirectory(_logger);
+            scanResponse.FileList = scanDirectory.Run(_path, _excludeList);
+            return scanResponse;
         }
 
         protected InitResponse RunInit(InitRequest request)

@@ -22,7 +22,7 @@ namespace DevSyncLib
 
         public bool Compare(FsEntry other)
         {
-            // TODO: don't compare dates for directories
+            // TODO: we don't compare dates for directories
             return other != null && Path == other.Path && Length == other.Length && (IsDirectory || CompareDates(LastWriteTime, other.LastWriteTime));
         }
 

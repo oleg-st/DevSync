@@ -1,13 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib
 {
     public class ScanDirectory
     {
-        public Dictionary<string, FsEntry> FileList { get; private set; }
+        private Dictionary<string, FsEntry> _fileList;
         private ExcludeList _excludeList;
+        private readonly ILogger _logger;
+
+        public ScanDirectory(ILogger logger)
+        {
+            _logger = logger;
+            _fileList = new Dictionary<string, FsEntry>();
+        }
 
         private void ScanPath(string basePath, string relativePath)
         {
@@ -29,12 +37,12 @@ namespace DevSyncLib
                     {
                         try
                         {
-                            FileList.Add(path, FsEntry.FromFileInfo(path, file));
+                            _fileList.Add(path, FsEntry.FromFileInfo(path, file));
                         }
                         catch (Exception ex)
                         {
                             // TODO: ignored errors
-                            Logger.Log($"Scan error {ex}");
+                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
                         }
                     }
                 }
@@ -48,12 +56,12 @@ namespace DevSyncLib
                         ScanPath(basePath, path);
                         try
                         {
-                            FileList.Add(path, FsEntry.FromDirectoryInfo(path, dir));
+                            _fileList.Add(path, FsEntry.FromDirectoryInfo(path, dir));
                         }
                         catch (Exception ex)
                         {
                             // TODO: ignored errors
-                            Logger.Log($"Scan error {ex}");
+                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
                         }
                     }
                 }
@@ -61,15 +69,15 @@ namespace DevSyncLib
             catch (Exception ex)
             {
                 // TODO: ignored errors
-                Logger.Log($"Scan error {ex}");
+                _logger.Log($"Scan error {ex}", LogLevel.Warning);
             }
         }
 
-        public void Run(string path, ExcludeList excludeList)
+        public Dictionary<string, FsEntry> Run(string path, ExcludeList excludeList)
         {
             _excludeList = excludeList;
-            FileList = new Dictionary<string, FsEntry>();
             ScanPath(path, "");
+            return _fileList;
         }
     }
 }

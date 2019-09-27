@@ -6,12 +6,14 @@ using System.Linq;
 using System.Threading;
 using DevSyncLib;
 using DevSyncLib.Command;
+using DevSyncLib.Logger;
 using Task = System.Threading.Tasks.Task;
 
 namespace DevSync
 {
     public class Sender : IDisposable
     {
+        private readonly ILogger _logger;
         private bool _needScan;
         private bool _needQuit;
         private FileSystemWatcher _fileSystemWatcher;
@@ -30,46 +32,39 @@ namespace DevSync
         // max items body size in chunk (soft limit)
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
 
-        public Sender(string srcPath, string destPath, List<string> excludeList = null, bool deployAgent = false)
+        public Sender(SyncOptions syncOptions, bool deployAgent, ILogger logger)
         {
-            if (string.IsNullOrEmpty(srcPath) || !Directory.Exists(srcPath))
+            _logger = logger;
+
+            if (!Directory.Exists(syncOptions.SourcePath))
             {
-                throw new SyncException($"Invalid source path: {srcPath}");
+                throw new SyncException($"Invalid source path: {syncOptions.SourcePath}");
             }
 
-            var syncPath = SyncPath.Parse(destPath);
-            if (syncPath == null)
-            {
-                throw new SyncException($"Invalid destination path: {destPath}");
-            }
-
-            _srcPath = srcPath;
-            _excludeList = new ExcludeList();
-            if (excludeList != null)
-            {
-                _excludeList.SetList(excludeList);
-            }
+            _srcPath = syncOptions.SourcePath;
+            _excludeList = new ExcludeList(); 
+            _excludeList.SetList(syncOptions.ExcludeList);
 
             _changes = new Dictionary<string, FsChange>();
             _needScan = true;
             _autoResetEvent = new AutoResetEvent(false);
-            _agentStarter = AgentStarter.Create(syncPath, _excludeList.GetList(), deployAgent);
+            _agentStarter = AgentStarter.Create(syncOptions, _excludeList.GetList(), deployAgent, _logger);
         }
 
         private void Scan()
         {
             var sw = Stopwatch.StartNew();
-            var scanDirectory = new ScanDirectory();
+            Dictionary<string, FsEntry> srcList = null;
             var task = Task.Run(() =>
             {
-                scanDirectory.Run(_srcPath, _excludeList);
-                Console.WriteLine($"Scanned local {scanDirectory.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
+                var scanDirectory = new ScanDirectory(_logger);
+                srcList = scanDirectory.Run(_srcPath, _excludeList);
+                _logger.Log($"Scanned local {srcList.Count} items in {sw.ElapsedMilliseconds} ms");
             });
             var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest());
-            Console.WriteLine($"Scanned remote {response.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
+            _logger.Log($"Scanned remote {response.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
             task.Wait();
 
-            var srcList = scanDirectory.FileList;
             var destList = response.FileList;
 
             long totalSize = 0;
@@ -106,7 +101,7 @@ namespace DevSync
                 UpdateHasWork();
             }
 
-            Console.WriteLine($"Scanned {itemsCount} items, {PrettySize(totalSize)} to send in {sw.ElapsedMilliseconds} ms");
+            _logger.Log($"Scanned {itemsCount} items, {PrettySize(totalSize)} to send in {sw.ElapsedMilliseconds} ms");
         }
 
         private void AddChange(FsChange fsChange)
@@ -218,7 +213,7 @@ namespace DevSync
                 // ready if we have no work for 300 ms
                 if (!HasWork)
                 {
-                    Console.WriteLine("Ready");
+                    _logger.Log("Ready");
                 }
             }
 
@@ -276,11 +271,11 @@ namespace DevSync
 
             if (applyRequest.Changes.Count == 1)
             {
-                Console.WriteLine(applyRequest.Changes.First());
+                _logger.Log(applyRequest.Changes.First().ToString());
             }
             else
             {
-                Console.WriteLine($"Sending {applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
+                _logger.Log($"Sending {applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
             }
 
             var response = _agentStarter.SendCommand<ApplyResponse>(applyRequest);
@@ -310,8 +305,8 @@ namespace DevSync
                                     else
                                     {
                                         hasErrors = true;
-                                        Console.Error.WriteLine(
-                                            $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.Error ?? "-"}");
+                                        _logger.Log(
+                                            $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.Error ?? "-"}", LogLevel.Error);
                                     }
                                 }
                                 // resend
@@ -331,7 +326,7 @@ namespace DevSync
             }
 
             UpdateHasWork();
-            Console.WriteLine($"Sent {(applyRequest.Changes.Count == 1 ? "change" : $"{applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
+            _logger.Log($"Sent {(applyRequest.Changes.Count == 1 ? "change" : $"{applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
 
             return !hasErrors;
         }
@@ -367,7 +362,7 @@ namespace DevSync
                 }
                 catch (SyncException ex)
                 {
-                    Console.Error.WriteLine(ex.Message);
+                    _logger.Log(ex.Message, LogLevel.Error);
                     if (!ex.Recoverable)
                     {
                         break;
@@ -376,13 +371,13 @@ namespace DevSync
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(ex.Message);
+                    _logger.Log(ex.Message, LogLevel.Error);
                     hasErrors = true;
                 }
 
                 if (hasErrors)
                 {
-                    Console.WriteLine("Waiting");
+                    _logger.Log("Waiting");
                     // TODO: dynamic delay?
                     Thread.Sleep(1000);
                 }

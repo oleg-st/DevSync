@@ -1,18 +1,22 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
     public class Writer
     {
+        private readonly ILogger _logger;
+
         protected BinaryWriter BinaryWriter;
         // same size as chunk size
         private const int BUFFER_LENGTH = ChunkWriteStream.ChunkSize;
         private Memory<byte> _buffer = new byte[BUFFER_LENGTH];
 
-        public Writer(Stream stream)
+        public Writer(Stream stream, ILogger logger)
         {
+            _logger = logger;
             BinaryWriter = new BinaryWriter(stream, Encoding.UTF8);
         }
 
@@ -100,7 +104,7 @@ namespace DevSyncLib.Command
                     else
                     {
                         // something else
-                        Console.Error.WriteLine(ex.Message);
+                        _logger.Log(ex.Message, LogLevel.Error);
                     }
 
                     // cannot read file (sender error)
@@ -138,7 +142,7 @@ namespace DevSyncLib.Command
                     {
                         // file read error (sender error)
                         WriteInt(-1);
-                        Console.Error.WriteLine(ex.Message);
+                        _logger.Log(ex.Message, LogLevel.Error);
                         return false;
                     }
 

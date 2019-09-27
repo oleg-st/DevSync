@@ -1,18 +1,22 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
     public class Reader
     {
+        private readonly ILogger _logger;
+
         protected BinaryReader BinaryReader;
         // same size as chunk size
         private const int BUFFER_LENGTH = ChunkWriteStream.ChunkSize;
         private Memory<byte> _buffer = new byte[BUFFER_LENGTH];
 
-        public Reader(Stream stream)
+        public Reader(Stream stream, ILogger logger)
         {
+            _logger = logger;
             BinaryReader = new BinaryReader(stream, Encoding.UTF8);
         }
 

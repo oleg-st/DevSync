@@ -2,6 +2,7 @@
 using System.IO;
 using DevSyncLib;
 using DevSyncLib.Command;
+using DevSyncLib.Logger;
 
 namespace DevSyncAgent
 {
@@ -9,6 +10,7 @@ namespace DevSyncAgent
     {
         static void Main(string[] args)
         {
+            var logger = new FileLogger( Path.Combine(Path.GetTempPath(), "devsync.log"));
             try
             {
                 if (!Console.IsInputRedirected || !Console.IsOutputRedirected)
@@ -17,8 +19,8 @@ namespace DevSyncAgent
                     return;
                 }
 
-                var packetStream = new PacketStream(Console.OpenStandardInput(), Console.OpenStandardOutput());
-                var commandRunner = new CommandRunner();
+                var packetStream = new PacketStream(Console.OpenStandardInput(), Console.OpenStandardOutput(), logger);
+                var commandRunner = new CommandRunner(logger);
                 while (true)
                 {
                     var request = packetStream.ReadPacket();
@@ -32,8 +34,7 @@ namespace DevSyncAgent
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine(e);
-                Logger.Log(e.ToString());
+                logger.Log(e.ToString(), LogLevel.Error);
             }
         }
     }

@@ -54,7 +54,7 @@ namespace DevSyncLib.Command
             }
             catch (EndOfStreamException)
             {
-                throw new SyncException("Connection closed", true);
+                throw new EndOfStreamException("Connection closed");
             }
         }
 

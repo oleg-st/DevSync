@@ -1,25 +1,28 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using DevSyncLib.Command.Compression;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
     public class PacketStream
     {
+        private readonly ILogger _logger;
         protected Reader Reader;
         protected Writer Writer;
         protected Dictionary<int, Packet> Packets;
         protected ICompress Compress;
 
-        public PacketStream(Stream inputStream, Stream outputStream)
+        public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
+            _logger = logger;
             Compress = new BrotliCompression();
 
             inputStream = new ChunkReadStream(inputStream, Compress);
             outputStream = new ChunkWriteStream(outputStream, Compress);
 
-            Reader = new Reader(inputStream);
-            Writer = new Writer(outputStream);
+            Reader = new Reader(inputStream, _logger);
+            Writer = new Writer(outputStream, _logger);
 
             Packets = new Dictionary<int, Packet>();
             RegisterPacket(new ErrorResponse());

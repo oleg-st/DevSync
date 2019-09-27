@@ -1,4 +1,5 @@
 ﻿using DevSyncLib.Command;
+using DevSyncLib.Logger;
 using Medallion.Shell;
 
 namespace DevSync
@@ -15,7 +16,11 @@ namespace DevSync
         public override void DoStart()
         {
             _command = Command.Run("dotnet", "DevSyncAgent.dll");
-            PacketStream = new PacketStream(_command.StandardOutput.BaseStream, _command.StandardInput.BaseStream);
+            PacketStream = new PacketStream(_command.StandardOutput.BaseStream, _command.StandardInput.BaseStream, Logger);
+        }
+
+        public AgentStarterLocal(ILogger logger) : base(logger)
+        {
         }
     }
 }
