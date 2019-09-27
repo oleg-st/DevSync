@@ -1,7 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using DevSyncLib.Command.Compression;
 
 namespace DevSyncLib.Command
 {
@@ -10,11 +9,14 @@ namespace DevSyncLib.Command
         protected Reader Reader;
         protected Writer Writer;
         protected Dictionary<int, Packet> Packets;
+        protected ICompress Compress;
 
         public PacketStream(Stream inputStream, Stream outputStream)
         {
-            inputStream = new ChunkReadStream(inputStream);
-            outputStream= new ChunkWriteStream(outputStream);
+            Compress = new BrotliCompression();
+
+            inputStream = new ChunkReadStream(inputStream, Compress);
+            outputStream = new ChunkWriteStream(outputStream, Compress);
 
             Reader = new Reader(inputStream);
             Writer = new Writer(outputStream);

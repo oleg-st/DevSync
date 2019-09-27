@@ -230,7 +230,7 @@ namespace DevSync
 
         private static string PrettySize(long size)
         {
-            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            string[] sizes = { "bytes", "KB", "MB", "GB", "TB" };
             double doubleSize = size;
             var order = 0;
             while (doubleSize >= 1024 && order < sizes.Length - 1)

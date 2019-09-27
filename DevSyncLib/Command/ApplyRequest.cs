@@ -51,49 +51,11 @@ namespace DevSyncLib.Command
                     case FsChangeType.Change:
                         try
                         {
-                            var bodyReadSuccess = false;
+                            bool bodyReadSuccess;
                             var directoryName = Path.GetDirectoryName(path);
                             if (fsChange.HasBody)
                             {
-                                string tempPath;
-                                do
-                                {
-                                    tempPath = Path.Combine(directoryName,
-                                        "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
-                                } while (File.Exists(tempPath));
-
-                                try
-                                {
-                                    Directory.CreateDirectory(directoryName);
-                                    using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write,
-                                        FileShare.Read);
-                                    bodyReadSuccess = Reader.ReadFsChangeBody(fs, fsChange.FsEntry.Length);
-                                }
-                                catch (Exception)
-                                {
-                                    // skip body
-                                    Reader.ReadFsChangeBody(null, fsChange.FsEntry.Length);
-                                    throw;
-                                }
-                                finally
-                                {
-                                    if (bodyReadSuccess)
-                                    {
-                                        try
-                                        {
-                                            File.Move(tempPath, path, true);
-                                        }
-                                        catch (Exception)
-                                        {
-                                            FsHelper.TryDeleteFile(tempPath);
-                                            throw;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        FsHelper.TryDeleteFile(tempPath);
-                                    }
-                                }
+                                bodyReadSuccess = Reader.ReadFsChangeBody(path, fsChange);
                             }
                             else
                             {
@@ -104,11 +66,11 @@ namespace DevSyncLib.Command
                                 }
 
                                 bodyReadSuccess = true;
+                                File.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
                             }
 
                             if (bodyReadSuccess)
                             {
-                                File.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
                                 resultCode = FsChangeResultCode.Ok;
                             }
                             else

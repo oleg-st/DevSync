@@ -88,17 +88,101 @@ namespace DevSyncLib.Command
             return fsChangeResult;
         }
 
-        public bool ReadFsChangeBody(FileStream fs, long length)
+        public bool ReadFsChangeBody(string path, FsChange fsChange)
         {
-            long written = 0;
-            int chunkSize;
+            string tempPath = null;
+            FileStream fs = null;
+            bool bodyReadSuccess = false;
+            try
+            {
+                long written = 0;
+                int chunkSize;
+                do
+                {
+                    chunkSize = ReadInt();
+                    if (chunkSize < 0)
+                    {
+                        // error occurred in sender
+                        return false;
+                    }
+
+                    if (chunkSize > BUFFER_LENGTH)
+                    {
+                        throw new SyncException("Chunk is too long");
+                    }
+
+                    var totalRead = 0;
+                    var remain = chunkSize;
+
+                    while (remain > 0)
+                    {
+                        int read = BinaryReader.Read(_buffer.Slice(totalRead, remain).Span);
+                        if (read == 0)
+                        {
+                            throw new EndOfStreamException(
+                                $"Premature end of stream ({totalRead}, {remain}, {chunkSize})");
+                        }
+
+                        totalRead += read;
+                        remain -= read;
+                    }
+
+                    if (written == 0)
+                    {
+                        var directoryName = Path.GetDirectoryName(path);
+                        Directory.CreateDirectory(directoryName);
+                        tempPath = Path.Combine(directoryName,
+                            "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
+                        fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                    }
+
+                    fs?.Write(_buffer.Slice(0, totalRead).Span);
+                    written += totalRead;
+                } while (chunkSize > 0);
+
+                bodyReadSuccess = written == fsChange.FsEntry.Length;
+                return bodyReadSuccess;
+            }
+            catch (Exception)
+            {
+                SkipFsChangeBody();
+                throw;
+            }
+            finally
+            {
+                if (fs != null)
+                {
+                    fs.Dispose();
+
+                    if (bodyReadSuccess)
+                    {
+                        try
+                        {
+                            File.SetLastWriteTime(tempPath, fsChange.FsEntry.LastWriteTime);
+                            File.Move(tempPath, path, true);
+                        }
+                        catch (Exception)
+                        {
+                            FsHelper.TryDeleteFile(tempPath);
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        FsHelper.TryDeleteFile(tempPath);
+                    }
+                }
+            }
+        }
+
+        public void SkipFsChangeBody()
+        {
             do
             {
-                chunkSize = ReadInt();
-                if (chunkSize < 0)
+                var chunkSize = ReadInt();
+                if (chunkSize <= 0)
                 {
-                    // error occurred in sender
-                    return false;
+                    return;
                 }
 
                 if (chunkSize > BUFFER_LENGTH)
@@ -106,26 +190,17 @@ namespace DevSyncLib.Command
                     throw new SyncException("Chunk is too long");
                 }
 
-                int totalRead = 0;
-                int remain = chunkSize;
-
+                var remain = chunkSize;
                 while (remain > 0)
                 {
-                    int read = BinaryReader.Read(_buffer.Slice(totalRead, remain).Span);
+                    var read = BinaryReader.Read(_buffer.Span);
                     if (read == 0)
                     {
-                        throw new EndOfStreamException($"Premature end of stream ({totalRead}, {remain}, {chunkSize})");
+                        throw new EndOfStreamException();
                     }
-
-                    totalRead += read;
                     remain -= read;
                 }
-
-                fs?.Write(_buffer.Slice(0, totalRead).Span);
-                written += totalRead;
-            } while (chunkSize > 0);
-
-            return written == length;
+            } while (true);
         }
     }
 }

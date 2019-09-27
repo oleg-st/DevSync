@@ -1,20 +1,23 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using DevSyncLib.Command.Compression;
 
 namespace DevSyncLib.Command
 {
     public class ChunkReadStream : Stream
     {
         private readonly Stream _baseStream;
+        private readonly ICompress _compress;
         public const int ChunkSize = ChunkWriteStream.ChunkSize;
         private readonly byte[] _chunkBytes = new byte[ChunkSize];
         private readonly byte[] _chunkCompressedBytes = new byte[ChunkSize];
         private int _chunkPosition, _chunkLength;
         private readonly byte[] _lengthBytes = new byte[4];
-        public ChunkReadStream(Stream baseStream)
+        public ChunkReadStream(Stream baseStream, ICompress compress)
         {
             _baseStream = baseStream;
+            _compress = compress;
         }
 
         public override void Flush()
@@ -36,10 +39,10 @@ namespace DevSyncLib.Command
             }
         }
 
-        protected void TryDecompressBrotli()
+        protected void TryDecompress()
         {
             ReadFill(_chunkCompressedBytes, 0, _chunkLength);
-            if (!BrotliDecoder.TryDecompress(
+            if (!_compress.TryDecompress(
                 new ReadOnlySpan<byte>(_chunkCompressedBytes, 0, _chunkLength),
                 new Span<byte>(_chunkBytes, 0, ChunkSize), out var written))
             {
@@ -61,7 +64,7 @@ namespace DevSyncLib.Command
 
             if (compressed)
             {
-                TryDecompressBrotli();
+                TryDecompress();
             }
             else
             {

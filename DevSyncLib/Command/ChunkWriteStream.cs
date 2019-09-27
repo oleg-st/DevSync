@@ -1,25 +1,34 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using DevSyncLib.Command.Compression;
 
 namespace DevSyncLib.Command
 {
     public class ChunkWriteStream : Stream
     {
         private readonly Stream _baseStream;
+
+        private readonly ICompress _compress;
+
         // max chunk size
         public const int ChunkSize = 1024 * 1024;
         // compress chunk if length is more than
         public const int CompressionThreshold = 1024;
+        // flush every 500ms (so agent would have some data to process instead of waiting)
+        public const int FlushTimeout = 500;
         // 4 bytes (int32) for chunk length
         private const int LENGTH_SIZE = 4;
         private Memory<byte> _chunkMemory = new byte[ChunkSize + LENGTH_SIZE];
         private Memory<byte> _chunkCompressedMemory = new byte[ChunkSize + LENGTH_SIZE];
         private int _chunkLength;
+        private Stopwatch _flushStopwatch;
 
-        public ChunkWriteStream(Stream baseStream)
+        public ChunkWriteStream(Stream baseStream, ICompress compress)
         {
             _baseStream = baseStream;
+            _compress = compress;
         }
 
         public override void Flush()
@@ -49,18 +58,18 @@ namespace DevSyncLib.Command
             }
         }
 
-        protected bool TryCompressBrotli(out int written)
+        protected bool TryCompress(out int written)
         {
             // TODO: tune quality and window
-            return BrotliEncoder.TryCompress(_chunkMemory.Slice(LENGTH_SIZE, _chunkLength).Span,
-                _chunkCompressedMemory.Slice( LENGTH_SIZE, ChunkSize).Span, out written, 0, 20);
+            return _compress.TryCompress(_chunkMemory.Slice(LENGTH_SIZE, _chunkLength).Span,
+                _chunkCompressedMemory.Slice( LENGTH_SIZE, ChunkSize).Span, out written);
         }
 
         protected void FlushChunk()
         {
             if (_chunkLength > 0)
             {
-                if (_chunkLength >= CompressionThreshold && TryCompressBrotli(out var written))
+                if (_chunkLength >= CompressionThreshold && TryCompress(out var written))
                 {
                     WriteChunk(_chunkCompressedMemory.Span, written, true);
                 }
@@ -70,6 +79,7 @@ namespace DevSyncLib.Command
                 }
 
                 _chunkLength = 0;
+                _flushStopwatch = Stopwatch.StartNew();
             }
         }
 
@@ -114,6 +124,11 @@ namespace DevSyncLib.Command
                 {
                     FlushChunk();
                 }
+            }
+
+            if (_chunkLength > 0 && _flushStopwatch != null && _flushStopwatch.ElapsedMilliseconds >= FlushTimeout)
+            {
+                FlushChunk();
             }
         }
 
