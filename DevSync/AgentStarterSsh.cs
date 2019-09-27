@@ -62,10 +62,12 @@ namespace DevSync
             {
                 using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
                 {
-                    foreach (var file in files)
+                    var assemblyPath = Path.GetDirectoryName(typeof(CommandRunner).Assembly.Location);
+
+                    foreach (var filename in files)
                     {
-                        var tarEntry = TarEntry.CreateEntryFromFile(file);
-                        tarEntry.Name = Path.GetFileName(file);
+                        var tarEntry = TarEntry.CreateEntryFromFile(Path.Combine(assemblyPath, filename));
+                        tarEntry.Name = Path.GetFileName(filename);
                         tarArchive.WriteEntry(tarEntry, true);
                     }
                 }
