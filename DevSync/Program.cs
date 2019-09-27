@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.Design;
 using CommandLine;
 using CommandLine.Text;
-using DevSyncLib;
 using DevSyncLib.Logger;
 
 namespace DevSync
@@ -18,10 +15,10 @@ namespace DevSync
             [Value(1, HelpText = "Destination path", MetaName = "destination")]
             public string DestinationPath { get; set; }
 
-            [Option("deploy", Default = false, HelpText = "Deploy agent")]
+            [Option("deploy", Default = false, HelpText = "Deploy agent to ~/.devsync")]
             public bool DeployAgent { get; set; }
 
-            [Option("realsync", Default = null, HelpText = "Realsync source directory")]
+            [Option("realsync", Default = null, HelpText = "Realsync source directory (with .realsync file)")]
             public string RealsyncPath { get; set; }
         }
 
@@ -32,7 +29,8 @@ namespace DevSync
             optionsUsage.Copyright = "by Oleg Stepanischev";
             optionsUsage.AdditionalNewLineAfterOption = false;
             optionsUsage.AddDashesToOption = true;
-            optionsUsage.AddPreOptionsLine($"Usage: dotnet DevSync <in> <out> [options]");
+            optionsUsage.AddPreOptionsLine("Usage: dotnet DevSync.dll <source> <destination> [options]");
+            optionsUsage.AddPreOptionsLine("       dotnet DevSync.dll --realsync <source> [options]");
             optionsUsage.AddPreOptionsLine("Options:");
             optionsUsage.AddOptions(parserResult);
             Console.Error.WriteLine(optionsUsage);
