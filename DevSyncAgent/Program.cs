@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 

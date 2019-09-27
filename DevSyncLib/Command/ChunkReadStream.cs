@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.IO.Compression;
 using DevSyncLib.Command.Compression;
 
 namespace DevSyncLib.Command

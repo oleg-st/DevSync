@@ -270,14 +270,9 @@ namespace DevSync
                 }
             }
 
-            if (applyRequest.Changes.Count == 1)
-            {
-                _logger.Log(applyRequest.Changes.First().ToString());
-            }
-            else
-            {
-                _logger.Log($"Sending {applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
-            }
+            _logger.Log(applyRequest.Changes.Count == 1
+                ? applyRequest.Changes.First().ToString()
+                : $"Sending {applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
 
             var response = _agentStarter.SendCommand<ApplyResponse>(applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);

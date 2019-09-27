@@ -7,7 +7,6 @@ namespace DevSyncLib.Command
 {
     public class PacketStream
     {
-        private readonly ILogger _logger;
         protected Reader Reader;
         protected Writer Writer;
         protected Dictionary<int, Packet> Packets;
@@ -15,14 +14,13 @@ namespace DevSyncLib.Command
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
-            _logger = logger;
             Compress = new BrotliCompression();
 
             inputStream = new ChunkReadStream(inputStream, Compress);
             outputStream = new ChunkWriteStream(outputStream, Compress);
 
-            Reader = new Reader(inputStream, _logger);
-            Writer = new Writer(outputStream, _logger);
+            Reader = new Reader(inputStream, logger);
+            Writer = new Writer(outputStream, logger);
 
             Packets = new Dictionary<int, Packet>();
             RegisterPacket(new ErrorResponse());
@@ -73,8 +71,7 @@ namespace DevSyncLib.Command
         {
             WritePacket(packet);
             var responsePacket = ReadPacket();
-            var response = responsePacket as T;
-            if (response != null)
+            if (responsePacket is T response)
             {
                 return response;
             }

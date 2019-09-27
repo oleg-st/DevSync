@@ -7,7 +7,7 @@ namespace DevSyncLib
 {
     public class ScanDirectory
     {
-        private Dictionary<string, FsEntry> _fileList;
+        private readonly Dictionary<string, FsEntry> _fileList;
         private ExcludeList _excludeList;
         private readonly ILogger _logger;
 
