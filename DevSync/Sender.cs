@@ -21,7 +21,7 @@ namespace DevSync
 
         private readonly string _srcPath;
 
-        private readonly ExcludeList _excludeList;
+        private readonly FileMaskList _excludeList;
 
         private readonly Dictionary<string, FsChange> _changes;
         private readonly AgentStarter _agentStarter;
@@ -43,7 +43,7 @@ namespace DevSync
             }
 
             _srcPath = syncOptions.SourcePath;
-            _excludeList = new ExcludeList(); 
+            _excludeList = new FileMaskList(); 
             _excludeList.SetList(syncOptions.ExcludeList);
 
             _changes = new Dictionary<string, FsChange>();
@@ -132,7 +132,7 @@ namespace DevSync
                 SetGitIsBusy(true);
             }
 
-            if (_excludeList.IsExcluded(path))
+            if (_excludeList.IsMatch(path))
             {
                 return;
             }
@@ -149,7 +149,7 @@ namespace DevSync
                 SetGitIsBusy(false);
             }
 
-            if (_excludeList.IsExcluded(path))
+            if (_excludeList.IsMatch(path))
             {
                 return;
             }
@@ -168,10 +168,10 @@ namespace DevSync
             }
 
             // is new file excluded?
-            if (_excludeList.IsExcluded(path))
+            if (_excludeList.IsMatch(path))
             {
                 // old file is not excluded -> delete it
-                if (!_excludeList.IsExcluded(oldPath))
+                if (!_excludeList.IsMatch(oldPath))
                 {
                     var oldFsEntry = FsEntry.FromFilename(e.OldFullPath, oldPath);
                     AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = oldFsEntry});
@@ -182,7 +182,7 @@ namespace DevSync
             else // new file is not excluded
             {
                 // old file is excluded -> send new file
-                if (_excludeList.IsExcluded(oldPath))
+                if (_excludeList.IsMatch(oldPath))
                 {                    
                     var fsEntry = FsEntry.FromFilename(e.FullPath, path);
                     AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = fsEntry });
@@ -225,20 +225,22 @@ namespace DevSync
         private void WaitForWork()
         {
             const int readyTimeout = 300;
-            var timing = true;
+            var waitForReady = true;
             var sw = Stopwatch.StartNew();
-            var timeout = Timeout.Infinite;
             while (!HasWork)
             {
-                if (timing)
+                var timeout = Timeout.Infinite;
+                if (waitForReady)
                 {
                     var elapsed = sw.ElapsedMilliseconds;
                     // no work for some time and git is not busy
-                    if (elapsed >= readyTimeout && !_gitIsBusy)
+                    if (elapsed >= readyTimeout)
                     {
-                        _logger.Log("Ready");
-                        timing = false;
-                        timeout = Timeout.Infinite;
+                        if (!_gitIsBusy)
+                        {
+                            _logger.Log("Ready");
+                            waitForReady = false;
+                        }
                     }
                     else
                     {

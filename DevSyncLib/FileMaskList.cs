@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace DevSyncLib
 {
-    public class ExcludeList
+    public class FileMaskList
     {
         private Regex _regex;
         private readonly List<string> _masks = new List<string>();
@@ -59,7 +59,7 @@ namespace DevSyncLib
             }
         }
 
-        public bool IsExcluded(string path)
+        public bool IsMatch(string path)
         {
             return !string.IsNullOrEmpty(path) && _regex != null && _regex.IsMatch(path);
         }

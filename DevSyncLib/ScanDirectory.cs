@@ -8,7 +8,7 @@ namespace DevSyncLib
     public class ScanDirectory
     {
         private readonly Dictionary<string, FsEntry> _fileList;
-        private ExcludeList _excludeList;
+        private FileMaskList _excludeList;
         private readonly ILogger _logger;
 
         public ScanDirectory(ILogger logger)
@@ -33,7 +33,7 @@ namespace DevSyncLib
                 {
                     var path = Path.Combine(relativePath, file.Name);
                     // skip symlinks and excludes
-                    if ((file.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsExcluded(FsEntry.NormalizePath(path)))
+                    if ((file.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
                     {
                         try
                         {
@@ -51,7 +51,7 @@ namespace DevSyncLib
                 {
                     var path = Path.Combine(relativePath, dir.Name);
                     // skip symlinks and excludes
-                    if ((dir.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsExcluded(FsEntry.NormalizePath(path)))
+                    if ((dir.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
                     {
                         ScanPath(basePath, path);
                         try
@@ -73,7 +73,7 @@ namespace DevSyncLib
             }
         }
 
-        public Dictionary<string, FsEntry> Run(string path, ExcludeList excludeList)
+        public Dictionary<string, FsEntry> Run(string path, FileMaskList excludeList)
         {
             _excludeList = excludeList;
             ScanPath(path, "");

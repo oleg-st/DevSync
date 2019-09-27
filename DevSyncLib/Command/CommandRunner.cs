@@ -10,12 +10,12 @@ namespace DevSyncLib.Command
         private readonly ILogger _logger;
         private string _path;
         private bool _initialized;
-        private readonly ExcludeList _excludeList;
+        private readonly FileMaskList _excludeList;
 
         public CommandRunner(ILogger logger)
         {
             _logger = logger;
-            _excludeList = new ExcludeList();
+            _excludeList = new FileMaskList();
         }
 
         public Packet Run(Packet request)
