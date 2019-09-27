@@ -4,7 +4,7 @@ namespace DevSyncLib.Command
 {
     public class ScanResponse : Packet
     {
-        public override int Signature => 4;
+        public override short Signature => 4;
         public Dictionary<string, FsEntry> FileList;
 
         public override void Read(Reader reader)

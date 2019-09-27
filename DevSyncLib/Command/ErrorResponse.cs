@@ -2,7 +2,7 @@
 {
     public class ErrorResponse : Packet
     {
-        public override int Signature => 0;
+        public override short Signature => 0;
 
         public bool Recoverable;
         public string Message;

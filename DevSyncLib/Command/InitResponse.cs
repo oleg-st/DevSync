@@ -2,7 +2,7 @@
 {
     public class InitResponse : Packet
     {
-        public override int Signature => 2;
+        public override short Signature => 2;
 
         public bool Ok;
 

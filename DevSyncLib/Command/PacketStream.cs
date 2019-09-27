@@ -9,7 +9,7 @@ namespace DevSyncLib.Command
     {
         protected Reader Reader;
         protected Writer Writer;
-        protected Dictionary<int, Packet> Packets;
+        protected Dictionary<short, Packet> Packets;
         protected ICompress Compress;
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
@@ -22,7 +22,7 @@ namespace DevSyncLib.Command
             Reader = new Reader(inputStream, logger);
             Writer = new Writer(outputStream, logger);
 
-            Packets = new Dictionary<int, Packet>();
+            Packets = new Dictionary<short, Packet>();
             RegisterPacket(new ErrorResponse());
             RegisterPacket(new InitRequest());
             RegisterPacket(new InitResponse());
@@ -39,7 +39,7 @@ namespace DevSyncLib.Command
 
         public Packet ReadPacket()
         {
-            int packetSignature = Reader.ReadInt();
+            short packetSignature = Reader.ReadInt16();
             if (!Packets.TryGetValue(packetSignature, out var command))
             {
                 throw new SyncException($"Unknown packet: {packetSignature}");
@@ -56,13 +56,13 @@ namespace DevSyncLib.Command
 
         public void WritePacket(Packet packet)
         {
-            int commandSignature = packet.Signature;
+            var commandSignature = packet.Signature;
             if (!Packets.ContainsKey(commandSignature))
             {
                 throw new SyncException($"Unknown packet: {commandSignature}");
             }
 
-            Writer.WriteInt(commandSignature);
+            Writer.WriteInt16(commandSignature);
             packet.Write(Writer);
             Writer.Flush();
         }

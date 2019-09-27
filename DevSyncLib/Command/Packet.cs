@@ -2,7 +2,7 @@
 {
     public abstract class Packet
     {
-        public abstract int Signature { get; }
+        public abstract short Signature { get; }
 
         public abstract void Read(Reader reader);
 

@@ -11,6 +11,9 @@
         public bool Expired;
         public string Key => FsEntry.Path;
 
+        public bool IsEndMarker => ChangeType == FsChangeType.EndMarker;
+        public static readonly FsChange EndMarkerChange = new FsChange {ChangeType = FsChangeType.EndMarker};
+
         public override string ToString()
         {
             return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldFsEntry.Path} -> " : "")}{FsEntry.Path}{(ChangeType == FsChangeType.Change && FsEntry.Length >= 0 ? $", {FsEntry.Length}" : "")}";

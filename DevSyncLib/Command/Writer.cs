@@ -13,7 +13,6 @@ namespace DevSyncLib.Command
         // same size as chunk size
         private const int BUFFER_LENGTH = ChunkWriteStream.ChunkSize;
         private Memory<byte> _buffer = new byte[BUFFER_LENGTH];
-
         public Writer(Stream stream, ILogger logger)
         {
             _logger = logger;
@@ -64,7 +63,11 @@ namespace DevSyncLib.Command
 
         public void WriteFsChange(FsChange fsChange)
         {
-            WriteInt16((short)fsChange.ChangeType);
+            WriteByte((byte)fsChange.ChangeType);
+            if (fsChange.IsEnd)
+            {
+                return;
+            }
             WriteFsEntry(fsChange.FsEntry);
             if (fsChange.ChangeType == FsChangeType.Rename)
             {
@@ -75,6 +78,10 @@ namespace DevSyncLib.Command
         public void WriteFsChangeResult(FsChangeResult fsChangeResult)
         {
             WriteByte((byte)fsChangeResult.ChangeType);
+            if (fsChangeResult.IsEnd)
+            {
+                return;
+            }
             WriteString(fsChangeResult.Path);
             WriteByte((byte)fsChangeResult.ResultCode);
             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)

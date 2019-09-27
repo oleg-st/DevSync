@@ -2,7 +2,7 @@
 {
     public class ScanRequest : Packet
     {
-        public override int Signature => 3;
+        public override short Signature => 3;
 
         public override void Read(Reader reader)
         {

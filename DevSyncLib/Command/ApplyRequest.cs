@@ -6,7 +6,7 @@ namespace DevSyncLib.Command
 {
     public class ApplyRequest: Packet
     {
-        public override int Signature => 5;
+        public override short Signature => 5;
 
         public List<FsChange> Changes;
 
@@ -23,12 +23,14 @@ namespace DevSyncLib.Command
         public List<FsChangeResult> ReadAndApplyChanges()
         {
             var list = new List<FsChangeResult>();
-
-            var count = Reader.ReadInt();
-            Changes = new List<FsChange>();
-            for (var i = 0; i < count; i++)
+            while (true)
             {
                 var fsChange = Reader.ReadFsChange();
+                if (fsChange.IsEnd)
+                {
+                    break;
+                }
+
                 var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
                 FsChangeResultCode resultCode;
                 string error = null;
@@ -137,16 +139,19 @@ namespace DevSyncLib.Command
 
         public override void Write(Writer writer)
         {
-            writer.WriteInt(Changes.Count);
             foreach (var fsChange in Changes)
             {
-                writer.WriteFsChange(fsChange);
-                if (fsChange.HasBody)
+                if (!fsChange.Expired)
                 {
-                    var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
-                    writer.WriteFsChangeBody(path, fsChange);
+                    writer.WriteFsChange(fsChange);
+                    if (fsChange.HasBody)
+                    {
+                        var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
+                        writer.WriteFsChangeBody(path, fsChange);
+                    }
                 }
             }
+            writer.WriteFsChange(FsChange.EndChange);
         }
     }
 }

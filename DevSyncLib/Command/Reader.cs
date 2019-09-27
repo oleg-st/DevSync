@@ -66,9 +66,14 @@ namespace DevSyncLib.Command
 
         public FsChange ReadFsChange()
         {
+            var changeType = (FsChangeType) ReadByte();
+            if (changeType == FsChangeType.End)
+            {
+                return FsChange.EndChange;
+            }
             var fsChange = new FsChange
             {
-                ChangeType = (FsChangeType) ReadInt16(),
+                ChangeType = changeType,
                 FsEntry = ReadFsEntry()
             };
             fsChange.OldFsEntry = fsChange.ChangeType == FsChangeType.Rename ? ReadFsEntry() : null;
@@ -77,9 +82,15 @@ namespace DevSyncLib.Command
 
         public FsChangeResult ReadFsChangeResult()
         {
+            var changeType = (FsChangeType)ReadByte();
+            if (changeType == FsChangeType.End)
+            {
+                return FsChangeResult.EndChange;
+            }
+
             var fsChangeResult = new FsChangeResult
             {
-                ChangeType = (FsChangeType)ReadByte(),
+                ChangeType = changeType,
                 Path = ReadString(),
                 ResultCode = (FsChangeResultCode)ReadByte()
             };

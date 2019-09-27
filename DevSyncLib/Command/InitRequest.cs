@@ -4,7 +4,7 @@ namespace DevSyncLib.Command
 {
     public  class InitRequest : Packet
     {
-        public override int Signature => 1;
+        public override short Signature => 1;
         public AgentOptions AgentOptions;
 
         public override void Read(Reader reader)

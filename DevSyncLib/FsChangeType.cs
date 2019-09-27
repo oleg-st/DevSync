@@ -4,6 +4,8 @@
     {
         Remove,
         Change,
-        Rename
+        Rename,
+        // End of changes marker
+        EndMarker
     }
 }
