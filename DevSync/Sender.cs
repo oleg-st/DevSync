@@ -16,6 +16,7 @@ namespace DevSync
         private readonly ILogger _logger;
         private bool _needScan;
         private bool _needQuit;
+        private bool _gitIsBusy;
         private FileSystemWatcher _fileSystemWatcher;
 
         private readonly string _srcPath;
@@ -23,14 +24,14 @@ namespace DevSync
         private readonly ExcludeList _excludeList;
 
         private readonly Dictionary<string, FsChange> _changes;
-        private readonly AutoResetEvent _autoResetEvent;
-
         private readonly AgentStarter _agentStarter;
 
         // max items in chunk
         private const int CHANGES_MAX_COUNT = 10000;
         // max items body size in chunk (soft limit)
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
+        private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
+        private readonly object _syncHasWork = new object();
 
         public Sender(SyncOptions syncOptions, ILogger logger)
         {
@@ -47,7 +48,6 @@ namespace DevSync
 
             _changes = new Dictionary<string, FsChange>();
             _needScan = true;
-            _autoResetEvent = new AutoResetEvent(false);
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
         }
@@ -99,7 +99,7 @@ namespace DevSync
             _needScan = false;
             lock (_changes)
             {
-                UpdateHasWork();
+                NotifyHasWork();
             }
 
             _logger.Log($"Scanned {itemsCount} items, {PrettySize(totalSize)} to send in {sw.ElapsedMilliseconds} ms");
@@ -116,7 +116,7 @@ namespace DevSync
 
                 _changes[fsChange.Key] = fsChange;
             }
-            UpdateHasWork();
+            NotifyHasWork();
         }
 
         private string GetPath(string fullPath)
@@ -127,6 +127,11 @@ namespace DevSync
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
             var path = GetPath(e.FullPath);
+            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GIT_INDEX_LOCK_FILENAME)
+            {
+                SetGitIsBusy(true);
+            }
+
             if (_excludeList.IsExcluded(path))
             {
                 return;
@@ -139,6 +144,11 @@ namespace DevSync
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
         {
             var path = GetPath(e.FullPath);
+            if (_gitIsBusy && path == GIT_INDEX_LOCK_FILENAME)
+            {
+                SetGitIsBusy(false);
+            }
+
             if (_excludeList.IsExcluded(path))
             {
                 return;
@@ -152,6 +162,10 @@ namespace DevSync
         {
             var path = GetPath(e.FullPath);
             var oldPath = GetPath(e.OldFullPath);
+            if (_gitIsBusy && oldPath == GIT_INDEX_LOCK_FILENAME)
+            {
+                SetGitIsBusy(false);
+            }
 
             // is new file excluded?
             if (_excludeList.IsExcluded(path))
@@ -194,33 +208,48 @@ namespace DevSync
             }
         }
 
-        private void UpdateHasWork()
+        private void SetGitIsBusy(bool value)
         {
-            if (HasWork)
+            _gitIsBusy = value;
+            NotifyHasWork();
+        }
+
+        private void NotifyHasWork()
+        {
+            lock (_syncHasWork)
             {
-                _autoResetEvent.Set();
-            }
-            else
-            {
-                _autoResetEvent.Reset();
+                Monitor.Pulse(_syncHasWork);
             }
         }
 
         private void WaitForWork()
         {
-            if (!HasWork)
-            {
-                _autoResetEvent.WaitOne(300);
-                // ready if we have no work for 300 ms
-                if (!HasWork)
-                {
-                    _logger.Log("Ready");
-                }
-            }
-
+            const int readyTimeout = 300;
+            var timing = true;
+            var sw = Stopwatch.StartNew();
+            var timeout = Timeout.Infinite;
             while (!HasWork)
             {
-                _autoResetEvent.WaitOne();
+                if (timing)
+                {
+                    var elapsed = sw.ElapsedMilliseconds;
+                    // no work for some time and git is not busy
+                    if (elapsed >= readyTimeout && !_gitIsBusy)
+                    {
+                        _logger.Log("Ready");
+                        timing = false;
+                        timeout = Timeout.Infinite;
+                    }
+                    else
+                    {
+                        timeout = readyTimeout - (int)elapsed;
+                    }
+                }
+
+                lock (_syncHasWork)
+                {
+                    Monitor.Wait(_syncHasWork, timeout);
+                }
             }
         }
 
@@ -321,7 +350,7 @@ namespace DevSync
                 }
             }
 
-            UpdateHasWork();
+            NotifyHasWork();
             _logger.Log($"Sent {(applyRequest.Changes.Count == 1 ? "change" : $"{applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
 
             return !hasErrors;
@@ -341,7 +370,7 @@ namespace DevSync
 
             while (!_needQuit)
             {
-                bool hasErrors = false;
+                var hasErrors = false;
                 try
                 {
 
@@ -385,7 +414,7 @@ namespace DevSync
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
             _needQuit = true;
-            UpdateHasWork();
+            NotifyHasWork();
             e.Cancel = true;
         }
 
