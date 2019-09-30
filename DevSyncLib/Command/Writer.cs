@@ -98,6 +98,7 @@ namespace DevSyncLib.Command
             Span<byte> buffer = stackalloc byte[bufferLength];
 
             long written = 0;
+
             FileStream fs = null;
             try
             {
@@ -120,7 +121,6 @@ namespace DevSyncLib.Command
                     }
 
                     // cannot read file (sender error)
-                    WriteInt(-1);
                     return false;
                 }
 
@@ -128,17 +128,20 @@ namespace DevSyncLib.Command
                 if (fs.Length != fsChange.FsEntry.Length)
                 {
                     // file length mismatch
-                    WriteInt(-1);
                     return false;
                 }
 
+                var fsChangeWritten = false;
                 int read;
                 do
                 {
                     if (fsChange.Expired)
                     {
                         // file change is expired -> stop
-                        WriteInt(-1);
+                        if (fsChangeWritten)
+                        {
+                            WriteInt(-1);
+                        }
                         return false;
                     }
 
@@ -153,9 +156,18 @@ namespace DevSyncLib.Command
                     catch (Exception ex)
                     {
                         // file read error (sender error)
-                        WriteInt(-1);
+                        if (fsChangeWritten)
+                        {
+                            WriteInt(-1);
+                        }
                         _logger.Log(ex.Message, LogLevel.Error);
                         return false;
+                    }
+
+                    if (!fsChangeWritten)
+                    {
+                        WriteFsChange(fsChange);
+                        fsChangeWritten = true;
                     }
 
                     WriteInt(read);
@@ -167,11 +179,17 @@ namespace DevSyncLib.Command
                 if (written != fsChange.FsEntry.Length)
                 {
                     // file length mismatch
-                    WriteInt(-1);
+                    if (fsChangeWritten)
+                    {
+                        WriteInt(-1);
+                    }
                     return false;
                 }
 
-                WriteInt(0);
+                if (fsChangeWritten)
+                {
+                    WriteInt(0);
+                }
                 return true;
             }
             finally

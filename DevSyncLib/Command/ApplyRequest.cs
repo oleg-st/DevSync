@@ -156,17 +156,24 @@ namespace DevSyncLib.Command
                                 }
                             }
                         }
-                        else
+                        else if (File.Exists(path))
                         {
-                            if (FsHelper.TryDeleteFile(path, out var exception))
+                            try
                             {
+                                File.Delete(path);
                                 resultCode = FsChangeResultCode.Ok;
+
                             }
-                            else
+                            catch (Exception ex)
                             {
                                 resultCode = FsChangeResultCode.Error;
-                                error = exception.Message;
+                                error = ex.Message;
+
                             }
+                        }
+                        else
+                        {
+                            resultCode = FsChangeResultCode.Ok;
                         }
                         break;
                     case FsChangeType.Rename:
@@ -207,11 +214,14 @@ namespace DevSyncLib.Command
             {
                 if (!fsChange.Expired)
                 {
-                    writer.WriteFsChange(fsChange);
                     if (fsChange.HasBody)
                     {
                         var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
                         writer.WriteFsChangeBody(path, fsChange);
+                    }
+                    else
+                    {
+                        writer.WriteFsChange(fsChange);
                     }
                 }
             }
