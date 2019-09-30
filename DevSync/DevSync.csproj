@@ -31,8 +31,4 @@
     </Reference>
   </ItemGroup>
 
-  <PropertyGroup>
-    <PublishTrimmed>true</PublishTrimmed>
-  </PropertyGroup>
-
 </Project>

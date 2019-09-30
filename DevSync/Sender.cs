@@ -106,12 +106,8 @@ namespace DevSync
             }
 
             _needScan = false;
-            lock (_changes)
-            {
-                NotifyHasWork();
-            }
-
-            _logger.Log($"Scanned {itemsCount} items, {PrettySize(_changesSize)} to send in {sw.ElapsedMilliseconds} ms");
+            NotifyHasWork();
+            _logger.Log($"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
         }
 
         private void AddChange(FsChange fsChange)

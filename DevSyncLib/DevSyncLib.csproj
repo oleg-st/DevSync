@@ -12,8 +12,4 @@
     <OutputPath>..\DevSync\bin\Release\</OutputPath>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <PublishTrimmed>true</PublishTrimmed>
-  </PropertyGroup>
-
 </Project>

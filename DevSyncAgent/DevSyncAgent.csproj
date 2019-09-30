@@ -17,8 +17,4 @@
     <ProjectReference Include="..\DevSyncLib\DevSyncLib.csproj" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <PublishTrimmed>true</PublishTrimmed>
-  </PropertyGroup>
-
 </Project>
