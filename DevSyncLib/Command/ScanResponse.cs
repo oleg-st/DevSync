@@ -18,7 +18,7 @@ namespace DevSyncLib.Command
             while (true)
             {
                 var fsEntry = reader.ReadFsEntry();
-                if (fsEntry.IsEndMarker)
+                if (fsEntry.IsEmpty)
                 {
                     break;
                 }
@@ -32,7 +32,7 @@ namespace DevSyncLib.Command
             {
                 writer.WriteFsEntry(fsEntry);
             }
-            writer.WriteFsEntry(FsEntry.EndMarker);
+            writer.WriteFsEntry(FsEntry.Empty);
         }
 
         public ScanResponse(ILogger logger) : base(logger)

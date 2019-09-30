@@ -11,8 +11,8 @@
         public bool Expired;
         public string Key => FsEntry.Path;
 
-        public bool IsEndMarker => ChangeType == FsChangeType.EndMarker;
-        public static readonly FsChange EndMarker = new FsChange {ChangeType = FsChangeType.EndMarker};
+        public bool IsEmpty => ChangeType == FsChangeType.EmptyMarker;
+        public static readonly FsChange Empty = new FsChange {ChangeType = FsChangeType.EmptyMarker};
 
         public override string ToString()
         {

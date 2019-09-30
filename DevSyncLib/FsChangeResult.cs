@@ -5,9 +5,9 @@
         public FsChangeType ChangeType;
         public string Path;
         public FsChangeResultCode ResultCode;
-        public string Error;
+        public string ErrorMessage;
         public string Key => Path;
-        public bool IsEndMarker => ChangeType == FsChangeType.EndMarker;
-        public static readonly FsChangeResult EndMarker = new FsChangeResult { ChangeType = FsChangeType.EndMarker };
+        public bool IsEmpty => ChangeType == FsChangeType.EmptyMarker;
+        public static readonly FsChangeResult Empty = new FsChangeResult { ChangeType = FsChangeType.EmptyMarker };
     }
 }

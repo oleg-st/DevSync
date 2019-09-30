@@ -54,7 +54,7 @@ namespace DevSyncLib.Command
         public void WriteFsEntry(FsEntry fsEntry)
         {
             WriteString(fsEntry.Path);
-            if (fsEntry.IsEndMarker)
+            if (fsEntry.IsEmpty)
             {
                 return;
             }
@@ -66,7 +66,7 @@ namespace DevSyncLib.Command
         public void WriteFsChange(FsChange fsChange)
         {
             WriteByte((byte)fsChange.ChangeType);
-            if (fsChange.IsEndMarker)
+            if (fsChange.IsEmpty)
             {
                 return;
             }
@@ -80,7 +80,7 @@ namespace DevSyncLib.Command
         public void WriteFsChangeResult(FsChangeResult fsChangeResult)
         {
             WriteByte((byte)fsChangeResult.ChangeType);
-            if (fsChangeResult.IsEndMarker)
+            if (fsChangeResult.IsEmpty)
             {
                 return;
             }
@@ -88,7 +88,7 @@ namespace DevSyncLib.Command
             WriteByte((byte)fsChangeResult.ResultCode);
             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
             {
-                WriteString(fsChangeResult.Error);
+                WriteString(fsChangeResult.ErrorMessage);
             }
         }
 
@@ -121,6 +121,7 @@ namespace DevSyncLib.Command
                     }
 
                     // cannot read file (sender error)
+                    WriteInt(-1);
                     return false;
                 }
 
@@ -128,20 +129,17 @@ namespace DevSyncLib.Command
                 if (fs.Length != fsChange.FsEntry.Length)
                 {
                     // file length mismatch
+                    WriteInt(-1);
                     return false;
                 }
 
-                var fsChangeWritten = false;
                 int read;
                 do
                 {
                     if (fsChange.Expired)
                     {
                         // file change is expired -> stop
-                        if (fsChangeWritten)
-                        {
-                            WriteInt(-1);
-                        }
+                        WriteInt(-1);
                         return false;
                     }
 
@@ -156,18 +154,9 @@ namespace DevSyncLib.Command
                     catch (Exception ex)
                     {
                         // file read error (sender error)
-                        if (fsChangeWritten)
-                        {
-                            WriteInt(-1);
-                        }
                         _logger.Log(ex.Message, LogLevel.Error);
+                        WriteInt(-1);
                         return false;
-                    }
-
-                    if (!fsChangeWritten)
-                    {
-                        WriteFsChange(fsChange);
-                        fsChangeWritten = true;
                     }
 
                     WriteInt(read);
@@ -179,17 +168,11 @@ namespace DevSyncLib.Command
                 if (written != fsChange.FsEntry.Length)
                 {
                     // file length mismatch
-                    if (fsChangeWritten)
-                    {
-                        WriteInt(-1);
-                    }
+                    WriteInt(-1);
                     return false;
                 }
 
-                if (fsChangeWritten)
-                {
-                    WriteInt(0);
-                }
+                WriteInt(0);
                 return true;
             }
             finally

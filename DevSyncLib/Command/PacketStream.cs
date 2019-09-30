@@ -10,14 +10,14 @@ namespace DevSyncLib.Command
         protected Reader Reader;
         protected Writer Writer;
         protected Dictionary<short, Packet> Packets;
-        protected ICompress Compress;
+        protected ICompression Compression;
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
-            Compress = new BrotliCompression();
+            Compression = new BrotliCompression();
 
-            inputStream = new ChunkReadStream(inputStream, Compress);
-            outputStream = new ChunkWriteStream(outputStream, Compress);
+            inputStream = new ChunkReadStream(inputStream, Compression);
+            outputStream = new ChunkWriteStream(outputStream, Compression);
 
             Reader = new Reader(inputStream, logger);
             Writer = new Writer(outputStream, logger);

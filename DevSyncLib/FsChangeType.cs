@@ -6,6 +6,6 @@
         Change,
         Rename,
         // End of changes marker
-        EndMarker
+        EmptyMarker
     }
 }

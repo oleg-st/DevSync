@@ -9,7 +9,7 @@ namespace DevSyncLib.Command
     {
         private readonly Stream _baseStream;
 
-        private readonly ICompress _compress;
+        private readonly ICompression _compression;
 
         // max chunk size
         public const int ChunkSize = 1024 * 1024;
@@ -24,10 +24,10 @@ namespace DevSyncLib.Command
         private int _chunkLength;
         private Stopwatch _flushStopwatch;
 
-        public ChunkWriteStream(Stream baseStream, ICompress compress)
+        public ChunkWriteStream(Stream baseStream, ICompression compression)
         {
             _baseStream = baseStream;
-            _compress = compress;
+            _compression = compression;
         }
 
         public override void Flush()
@@ -60,7 +60,7 @@ namespace DevSyncLib.Command
         protected bool TryCompress(out int written)
         {
             // TODO: tune quality and window
-            return _compress.TryCompress(_chunkMemory.Slice(LENGTH_SIZE, _chunkLength).Span,
+            return _compression.TryCompress(_chunkMemory.Slice(LENGTH_SIZE, _chunkLength).Span,
                 _chunkCompressedMemory.Slice( LENGTH_SIZE, ChunkSize).Span, out written);
         }
 

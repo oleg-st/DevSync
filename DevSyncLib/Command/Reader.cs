@@ -55,7 +55,7 @@ namespace DevSyncLib.Command
             var path = ReadString();
             if (string.IsNullOrEmpty(path))
             {
-                return FsEntry.EndMarker;
+                return FsEntry.Empty;
             }
 
             return new FsEntry
@@ -69,25 +69,25 @@ namespace DevSyncLib.Command
         public FsChange ReadFsChange()
         {
             var changeType = (FsChangeType) ReadByte();
-            if (changeType == FsChangeType.EndMarker)
+            if (changeType == FsChangeType.EmptyMarker)
             {
-                return FsChange.EndMarker;
+                return FsChange.Empty;
             }
             var fsChange = new FsChange
             {
                 ChangeType = changeType,
                 FsEntry = ReadFsEntry()
             };
-            fsChange.OldFsEntry = fsChange.ChangeType == FsChangeType.Rename ? ReadFsEntry() : null;
+            fsChange.OldFsEntry = fsChange.ChangeType == FsChangeType.Rename ? ReadFsEntry() : FsEntry.Empty;
             return fsChange;
         }
 
         public FsChangeResult ReadFsChangeResult()
         {
             var changeType = (FsChangeType)ReadByte();
-            if (changeType == FsChangeType.EndMarker)
+            if (changeType == FsChangeType.EmptyMarker)
             {
-                return FsChangeResult.EndMarker;
+                return FsChangeResult.Empty;
             }
 
             var fsChangeResult = new FsChangeResult
@@ -99,7 +99,7 @@ namespace DevSyncLib.Command
 
             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
             {
-                fsChangeResult.Error = ReadString();
+                fsChangeResult.ErrorMessage = ReadString();
             }
 
             return fsChangeResult;

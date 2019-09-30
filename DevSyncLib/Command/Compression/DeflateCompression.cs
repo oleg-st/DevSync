@@ -4,13 +4,13 @@ using System.IO.Compression;
 
 namespace DevSyncLib.Command.Compression
 {
-    public class GzipCompression : ICompression
+    public class DeflateCompression : ICompression
     {
         public bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int written)
         {
             using (var ms = new MemoryStream())
             {
-                using (var gzip = new GZipStream(ms, CompressionLevel.Fastest))
+                using (var gzip = new DeflateStream(ms, CompressionLevel.Fastest))
                 {
                     gzip.Write(source);
                     gzip.Flush();
@@ -35,7 +35,7 @@ namespace DevSyncLib.Command.Compression
             using (var ms = new MemoryStream(source.ToArray()))
             {
                 using var outputMs = new MemoryStream();
-                using var gzip = new GZipStream(ms, CompressionMode.Decompress);
+                using var gzip = new DeflateStream(ms, CompressionMode.Decompress);
                 gzip.CopyTo(outputMs);
                 var data = outputMs.ToArray();
 

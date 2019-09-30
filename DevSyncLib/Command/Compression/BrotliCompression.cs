@@ -3,7 +3,7 @@ using System.IO.Compression;
 
 namespace DevSyncLib.Command.Compression
 {
-    public class BrotliCompression : ICompress
+    public class BrotliCompression : ICompression
     {
         public bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int written)
         {

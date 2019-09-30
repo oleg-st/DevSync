@@ -14,7 +14,7 @@ namespace DevSyncLib.Command
             while (true)
             {
                 var fsChangeResult = reader.ReadFsChangeResult();
-                if (fsChangeResult.IsEndMarker)
+                if (fsChangeResult.IsEmpty)
                 {
                     break;
                 }
@@ -33,7 +33,7 @@ namespace DevSyncLib.Command
             {
                 writer.WriteFsChangeResult(fsChangeResult);
             }
-            writer.WriteFsChangeResult(FsChangeResult.EndMarker);
+            writer.WriteFsChangeResult(FsChangeResult.Empty);
         }
 
         public ApplyResponse(ILogger logger) : base(logger)

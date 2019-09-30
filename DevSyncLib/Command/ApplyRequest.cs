@@ -27,7 +27,7 @@ namespace DevSyncLib.Command
             while (true)
             {
                 var fsChange = Reader.ReadFsChange();
-                if (fsChange.IsEndMarker)
+                if (fsChange.IsEmpty)
                 {
                     break;
                 }
@@ -202,7 +202,7 @@ namespace DevSyncLib.Command
                         ChangeType = fsChange.ChangeType,
                         Path = fsChange.FsEntry.Path,
                         ResultCode = resultCode,
-                        Error = error
+                        ErrorMessage = error
                     };
                 }
             }
@@ -214,18 +214,15 @@ namespace DevSyncLib.Command
             {
                 if (!fsChange.Expired)
                 {
+                    writer.WriteFsChange(fsChange);
                     if (fsChange.HasBody)
                     {
                         var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
                         writer.WriteFsChangeBody(path, fsChange);
                     }
-                    else
-                    {
-                        writer.WriteFsChange(fsChange);
-                    }
                 }
             }
-            writer.WriteFsChange(FsChange.EndMarker);
+            writer.WriteFsChange(FsChange.Empty);
         }
 
         public ApplyRequest(ILogger logger) : base(logger)

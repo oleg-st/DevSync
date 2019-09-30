@@ -41,7 +41,7 @@ namespace DevSyncLib
                 foreach (var fsInfo in fileSystemInfos)
                 {
                     var path = Path.Combine(relativePath, fsInfo.Name);
-                    FsEntry fsEntry = null;
+                    FsEntry fsEntry = FsEntry.Empty;
 
                     // skip symlinks and excludes
                     if ((fsInfo.Attributes & FileAttributes.ReparsePoint) == 0 &&
@@ -65,7 +65,7 @@ namespace DevSyncLib
                             _logger.Log($"Scan error {ex}", LogLevel.Warning);
                         }
 
-                        if (fsEntry != null)
+                        if (!fsEntry.IsEmpty)
                         {
                             yield return fsEntry;
                         }

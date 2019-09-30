@@ -24,10 +24,11 @@ namespace DevSync
         private readonly FileMaskList _excludeList;
 
         private readonly Dictionary<string, FsChange> _changes;
+        private long _changesSize;
         private readonly AgentStarter _agentStarter;
 
         // max items in chunk
-        private const int CHANGES_MAX_COUNT = 10000;
+        private const int CHANGES_MAX_COUNT = 2500;
         // max items body size in chunk (soft limit)
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
@@ -48,6 +49,7 @@ namespace DevSync
             _excludeList.SetList(syncOptions.ExcludeList);
 
             _changes = new Dictionary<string, FsChange>();
+            _changesSize = 0;
             _needScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
@@ -73,22 +75,24 @@ namespace DevSync
             _logger.Log($"Scanned remote {destList.Count} items in {sw.ElapsedMilliseconds} ms");
             task.Wait();
 
-            long totalSize = 0;
             int itemsCount = 0;
             foreach (var srcEntry in srcList.Values)
             {
-                destList.TryGetValue(srcEntry.Path, out var destEntry);
+                if (!destList.TryGetValue(srcEntry.Path, out var destEntry))
+                {
+                    destEntry = FsEntry.Empty;
+                }
+
                 // add to changes
                 if (!srcEntry.Compare(destEntry))
                 {
                     var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
                     itemsCount++;
-                    totalSize += fsChange.BodySize;
                     AddChange(fsChange);
                 }
 
                 // remove from dest list
-                if (destEntry != null)
+                if (!destEntry.IsEmpty)
                 {
                     destList.Remove(destEntry.Path);
                 }
@@ -107,7 +111,7 @@ namespace DevSync
                 NotifyHasWork();
             }
 
-            _logger.Log($"Scanned {itemsCount} items, {PrettySize(totalSize)} to send in {sw.ElapsedMilliseconds} ms");
+            _logger.Log($"Scanned {itemsCount} items, {PrettySize(_changesSize)} to send in {sw.ElapsedMilliseconds} ms");
         }
 
         private void AddChange(FsChange fsChange)
@@ -117,9 +121,11 @@ namespace DevSync
                 if (_changes.TryGetValue(fsChange.Key, out var oldFsChange))
                 {
                     oldFsChange.Expired = true;
+                    _changesSize -= oldFsChange.BodySize;
                 }
 
                 _changes[fsChange.Key] = fsChange;
+                _changesSize += fsChange.BodySize;
             }
             NotifyHasWork();
         }
@@ -317,6 +323,7 @@ namespace DevSync
                     if (!fsChange.Expired)
                     {
                         _changes.Remove(fsChange.Key);
+                        _changesSize -= fsChange.BodySize;
                         if (responseResult.TryGetValue(fsChange.Key, out var fsChangeResult))
                         {
                             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
@@ -333,11 +340,12 @@ namespace DevSync
                                     {
                                         hasErrors = true;
                                         _logger.Log(
-                                            $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.Error ?? "-"}", LogLevel.Error);
+                                            $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
                                     }
                                 }
                                 // resend
                                 _changes.Add(fsChange.Key, fsChange);
+                                _changesSize += fsChange.BodySize;
                             }
                         }
                     }
@@ -347,13 +355,18 @@ namespace DevSync
                         if (_changes.TryGetValue(fsChange.Key, out var oldFsChange) && oldFsChange.Expired)
                         {
                             _changes.Remove(fsChange.Key);
+                            _changesSize -= fsChange.BodySize;
                         }
                     }
                 }
             }
 
             NotifyHasWork();
-            _logger.Log($"Sent {(_applyRequest.Changes.Count == 1 ? "change" : $"{_applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
+            lock (_changes)
+            {
+                _logger.Log(
+                    $"Sent {(_applyRequest.Changes.Count == 1 ? "change" : $"{_applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms{(_changesSize > 0 ? $", {PrettySize(_changesSize)} to send" : "")}");
+            }
 
             return !hasErrors;
         }

@@ -7,16 +7,16 @@ namespace DevSyncLib.Command
     public class ChunkReadStream : Stream
     {
         private readonly Stream _baseStream;
-        private readonly ICompress _compress;
+        private readonly ICompression _compression;
         public const int ChunkSize = ChunkWriteStream.ChunkSize;
         private readonly byte[] _chunkBytes = new byte[ChunkSize];
         private readonly byte[] _chunkCompressedBytes = new byte[ChunkSize];
         private int _chunkPosition, _chunkLength;
         private readonly byte[] _lengthBytes = new byte[4];
-        public ChunkReadStream(Stream baseStream, ICompress compress)
+        public ChunkReadStream(Stream baseStream, ICompression compression)
         {
             _baseStream = baseStream;
-            _compress = compress;
+            _compression = compression;
         }
 
         public override void Flush()
@@ -41,7 +41,7 @@ namespace DevSyncLib.Command
         protected void TryDecompress()
         {
             ReadFill(_chunkCompressedBytes, 0, _chunkLength);
-            if (!_compress.TryDecompress(
+            if (!_compression.TryDecompress(
                 new ReadOnlySpan<byte>(_chunkCompressedBytes, 0, _chunkLength),
                 new Span<byte>(_chunkBytes, 0, ChunkSize), out var written))
             {

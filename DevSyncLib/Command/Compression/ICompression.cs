@@ -2,7 +2,7 @@
 
 namespace DevSyncLib.Command.Compression
 {
-    public interface ICompress
+    public interface ICompression
     {
         bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int written);
 
