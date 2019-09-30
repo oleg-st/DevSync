@@ -12,7 +12,7 @@
         public string Key => FsEntry.Path;
 
         public bool IsEndMarker => ChangeType == FsChangeType.EndMarker;
-        public static readonly FsChange EndMarkerChange = new FsChange {ChangeType = FsChangeType.EndMarker};
+        public static readonly FsChange EndMarker = new FsChange {ChangeType = FsChangeType.EndMarker};
 
         public override string ToString()
         {

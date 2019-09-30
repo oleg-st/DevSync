@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using DevSyncLib.Logger;
@@ -7,63 +8,28 @@ namespace DevSyncLib
 {
     public class ScanDirectory
     {
-        private readonly Dictionary<string, FsEntry> _fileList;
-        private FileMaskList _excludeList;
+        private readonly FileMaskList _excludeList;
         private readonly ILogger _logger;
+        private readonly bool _withLength;
 
-        public ScanDirectory(ILogger logger)
+        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withLength = true)
         {
             _logger = logger;
-            _fileList = new Dictionary<string, FsEntry>();
+            _excludeList = excludeList;
+            _withLength = withLength;
         }
 
-        private void ScanPath(string basePath, string relativePath)
+        public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "")
         {
+            IEnumerable<FileSystemInfo> fileSystemInfos = null;
             try
             {
                 var fullPath = Path.Combine(basePath, relativePath);
 
-                if (!Directory.Exists(fullPath))
+                if (Directory.Exists(fullPath))
                 {
-                    return;
-                }
-
-                var di = new DirectoryInfo(fullPath);
-                foreach (var file in di.EnumerateFiles())
-                {
-                    var path = Path.Combine(relativePath, file.Name);
-                    // skip symlinks and excludes
-                    if ((file.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
-                    {
-                        try
-                        {
-                            _fileList.Add(path, FsEntry.FromFileInfo(path, file));
-                        }
-                        catch (Exception ex)
-                        {
-                            // TODO: ignored errors
-                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
-                        }
-                    }
-                }
-
-                foreach (var dir in di.EnumerateDirectories())
-                {
-                    var path = Path.Combine(relativePath, dir.Name);
-                    // skip symlinks and excludes
-                    if ((dir.Attributes & FileAttributes.ReparsePoint) == 0 && !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
-                    {
-                        ScanPath(basePath, path);
-                        try
-                        {
-                            _fileList.Add(path, FsEntry.FromDirectoryInfo(path, dir));
-                        }
-                        catch (Exception ex)
-                        {
-                            // TODO: ignored errors
-                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
-                        }
-                    }
+                    var directoryInfo = new DirectoryInfo(fullPath);
+                    fileSystemInfos = directoryInfo.EnumerateFileSystemInfos();
                 }
             }
             catch (Exception ex)
@@ -71,13 +37,44 @@ namespace DevSyncLib
                 // TODO: ignored errors
                 _logger.Log($"Scan error {ex}", LogLevel.Warning);
             }
-        }
 
-        public Dictionary<string, FsEntry> Run(string path, FileMaskList excludeList)
-        {
-            _excludeList = excludeList;
-            ScanPath(path, "");
-            return _fileList;
+            if (fileSystemInfos != null)
+            {
+                foreach (var fsInfo in fileSystemInfos)
+                {
+                    var path = Path.Combine(relativePath, fsInfo.Name);
+                    FsEntry fsEntry = null;
+
+                    // skip symlinks and excludes
+                    if ((fsInfo.Attributes & FileAttributes.ReparsePoint) == 0 &&
+                        !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
+                    {
+                        // scan children
+                        if ((fsInfo.Attributes & FileAttributes.Directory) != 0)
+                        {
+                            foreach (var entry in ScanPath(basePath, path))
+                            {
+                                yield return entry;
+                            }
+                        }
+
+                        try
+                        {
+                            fsEntry = FsEntry.FromFsInfo(path, fsInfo, _withLength);
+                        }
+                        catch (Exception ex)
+                        {
+                            // TODO: ignored errors
+                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
+                        }
+
+                        if (fsEntry != null)
+                        {
+                            yield return fsEntry;
+                        }
+                    }
+                }
+            }
         }
     }
 }

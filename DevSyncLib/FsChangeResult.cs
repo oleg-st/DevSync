@@ -8,6 +8,6 @@
         public string Error;
         public string Key => Path;
         public bool IsEndMarker => ChangeType == FsChangeType.EndMarker;
-        public static readonly FsChangeResult EndChangeMarker = new FsChangeResult { ChangeType = FsChangeType.EndMarker };
+        public static readonly FsChangeResult EndMarker = new FsChangeResult { ChangeType = FsChangeType.EndMarker };
     }
 }

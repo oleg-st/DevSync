@@ -23,13 +23,13 @@ namespace DevSyncLib.Command
             Writer = new Writer(outputStream, logger);
 
             Packets = new Dictionary<short, Packet>();
-            RegisterPacket(new ErrorResponse());
-            RegisterPacket(new InitRequest());
-            RegisterPacket(new InitResponse());
-            RegisterPacket(new ScanRequest());
-            RegisterPacket(new ScanResponse());
-            RegisterPacket(new ApplyRequest());
-            RegisterPacket(new ApplyResponse());
+            RegisterPacket(new ErrorResponse(logger));
+            RegisterPacket(new InitRequest(logger));
+            RegisterPacket(new InitResponse(logger));
+            RegisterPacket(new ScanRequest(logger));
+            RegisterPacket(new ScanResponse(logger));
+            RegisterPacket(new ApplyRequest(logger));
+            RegisterPacket(new ApplyResponse(logger));
         }
 
         protected void RegisterPacket(Packet packet)

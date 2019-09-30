@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
@@ -20,7 +22,7 @@ namespace DevSyncLib.Command
         }
 
         // read and apply changes
-        public IEnumerable<FsChangeResult> ReadAndApplyChanges()
+        public IEnumerable<FsChangeResult> ReadAndApplyChanges(FileMaskList excludeList)
         {
             while (true)
             {
@@ -94,17 +96,78 @@ namespace DevSyncLib.Command
 
                         break;
                     case FsChangeType.Remove:
-                        if (FsHelper.TryDeleteDirectory(path, out var exception) &&
-                            FsHelper.TryDeleteFile(path, out exception))
+                        // directory
+                        if (Directory.Exists(path))
                         {
-                            resultCode = FsChangeResultCode.Ok;
+                            var scanDirectory = new ScanDirectory(_logger, excludeList, false);
+                            Exception exception = null;
+                            foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.FsEntry.Path))
+                            {
+                                var fsEntryPath = Path.Combine(BasePath, fsEntry.Path);
+                                try
+                                {
+                                    if (fsEntry.IsDirectory)
+                                    {
+                                        Directory.Delete(fsEntryPath, false);
+                                    }
+                                    else
+                                    {
+                                        File.Delete(fsEntryPath);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (exception == null)
+                                    {
+                                        exception = ex;
+                                    }
+                                    _logger.Log($"Delete error {fsEntryPath} {ex}", LogLevel.Warning);
+                                }
+                            }
+
+                            try
+                            {
+                                Directory.Delete(path, false);
+                            }
+                            catch (Exception ex)
+                            {
+                                if (exception == null)
+                                {
+                                    exception = ex;
+                                }
+                                _logger.Log($"Delete error {path} {ex}", LogLevel.Warning);
+                            }
+
+                            if (exception == null)
+                            {
+                                resultCode = FsChangeResultCode.Ok;
+                            }
+                            else
+                            {
+                                // scan directory see any file -> error (handle excludes)
+                                if (scanDirectory.ScanPath(BasePath, fsChange.FsEntry.Path).Any(x => !x.IsDirectory))
+                                {
+                                    resultCode = FsChangeResultCode.Error;
+                                    error = exception.Message;
+                                }
+                                else
+                                {
+                                    resultCode = FsChangeResultCode.Ok;
+                                }
+                            }
                         }
                         else
                         {
-                            resultCode = FsChangeResultCode.Error;
-                            error = exception.Message;
+                            if (FsHelper.TryDeleteFile(path, out var exception))
+                            {
+                                resultCode = FsChangeResultCode.Ok;
+                            }
+                            else
+                            {
+                                resultCode = FsChangeResultCode.Error;
+                                error = exception.Message;
+                            }
                         }
-
                         break;
                     case FsChangeType.Rename:
                         try
@@ -152,7 +215,11 @@ namespace DevSyncLib.Command
                     }
                 }
             }
-            writer.WriteFsChange(FsChange.EndMarkerChange);
+            writer.WriteFsChange(FsChange.EndMarker);
+        }
+
+        public ApplyRequest(ILogger logger) : base(logger)
+        {
         }
     }
 }

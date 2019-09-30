@@ -1,4 +1,6 @@
-﻿namespace DevSyncLib.Command
+﻿using DevSyncLib.Logger;
+
+namespace DevSyncLib.Command
 {
     public class InitResponse : Packet
     {
@@ -14,6 +16,10 @@
         public override void Write(Writer writer)
         {
             writer.WriteBool(Ok);
+        }
+
+        public InitResponse(ILogger logger) : base(logger)
+        {
         }
     }
 }

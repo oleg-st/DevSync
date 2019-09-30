@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
@@ -32,7 +33,11 @@ namespace DevSyncLib.Command
             {
                 writer.WriteFsChangeResult(fsChangeResult);
             }
-            writer.WriteFsChangeResult(FsChangeResult.EndChangeMarker);
+            writer.WriteFsChangeResult(FsChangeResult.EndMarker);
+        }
+
+        public ApplyResponse(ILogger logger) : base(logger)
+        {
         }
     }
 }

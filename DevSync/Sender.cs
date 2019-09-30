@@ -51,7 +51,7 @@ namespace DevSync
             _needScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
-            _applyRequest = new ApplyRequest
+            _applyRequest = new ApplyRequest(_logger)
             {
                 BasePath = _srcPath,
                 Changes = new List<FsChange>(CHANGES_MAX_COUNT)
@@ -64,15 +64,14 @@ namespace DevSync
             Dictionary<string, FsEntry> srcList = null;
             var task = Task.Run(() =>
             {
-                var scanDirectory = new ScanDirectory(_logger);
-                srcList = scanDirectory.Run(_srcPath, _excludeList);
+                var scanDirectory = new ScanDirectory(_logger, _excludeList);
+                srcList = scanDirectory.ScanPath(_srcPath).ToDictionary(x => x.Path, y => y);
                 _logger.Log($"Scanned local {srcList.Count} items in {sw.ElapsedMilliseconds} ms");
             });
-            var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest());
-            _logger.Log($"Scanned remote {response.FileList.Count} items in {sw.ElapsedMilliseconds} ms");
+            var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
+            var destList = response.FileList.ToDictionary(x => x.Path, y => y);
+            _logger.Log($"Scanned remote {destList.Count} items in {sw.ElapsedMilliseconds} ms");
             task.Wait();
-
-            var destList = response.FileList;
 
             long totalSize = 0;
             int itemsCount = 0;

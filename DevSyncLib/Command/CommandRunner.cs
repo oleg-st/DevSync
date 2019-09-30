@@ -44,11 +44,11 @@ namespace DevSyncLib.Command
             }
             catch (SyncException ex)
             {
-                return new ErrorResponse { Message = ex.Message, Recoverable = ex.Recoverable };
+                return new ErrorResponse(_logger) { Message = ex.Message, Recoverable = ex.Recoverable };
             }
             catch (Exception ex)
             {
-                return new ErrorResponse { Message = ex.Message };
+                return new ErrorResponse(_logger) { Message = ex.Message };
             }
         }
 
@@ -64,9 +64,9 @@ namespace DevSyncLib.Command
         {
             CheckInitialized();
 
-            var scanResponse = new ScanResponse();
-            var scanDirectory = new ScanDirectory(_logger);
-            scanResponse.FileList = scanDirectory.Run(_path, _excludeList);
+            var scanResponse = new ScanResponse(_logger);
+            var scanDirectory = new ScanDirectory(_logger, _excludeList);
+            scanResponse.FileList = scanDirectory.ScanPath(_path);
             return scanResponse;
         }
 
@@ -89,14 +89,14 @@ namespace DevSyncLib.Command
             }
 
             _initialized = true;
-            return new InitResponse { Ok = true };
+            return new InitResponse(_logger) { Ok = true };
         }
 
         protected ApplyResponse RunApply(ApplyRequest applyRequest)
         {
             CheckInitialized();
             applyRequest.BasePath = _path;
-            var response = new ApplyResponse {Result = applyRequest.ReadAndApplyChanges()};
+            var response = new ApplyResponse(_logger) { Result = applyRequest.ReadAndApplyChanges(_excludeList)};
             return response;
         }
     }

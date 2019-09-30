@@ -1,4 +1,6 @@
-﻿namespace DevSyncLib.Command
+﻿using DevSyncLib.Logger;
+
+namespace DevSyncLib.Command
 {
     public class ErrorResponse : Packet
     {
@@ -17,6 +19,10 @@
         {
             writer.WriteString(Message);
             writer.WriteBool(Recoverable);
+        }
+
+        public ErrorResponse(ILogger logger) : base(logger)
+        {
         }
     }
 }

@@ -65,7 +65,7 @@ namespace DevSync
         protected void Initialize()
         {
             var sw = Stopwatch.StartNew();
-            var response = SendCommandInternal<InitResponse>(new InitRequest
+            var response = SendCommandInternal<InitResponse>(new InitRequest(Logger)
             {
                 AgentOptions = new AgentOptions
                 {

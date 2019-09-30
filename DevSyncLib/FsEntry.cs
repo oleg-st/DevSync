@@ -9,6 +9,9 @@ namespace DevSyncLib
         public string Path;
         public long Length;
         public DateTime LastWriteTime;
+        public bool IsEndMarker => string.IsNullOrEmpty(Path);
+        public static readonly FsEntry EndMarker = new FsEntry { Path = "" };
+
 
         public static string NormalizePath(string path)
         {
@@ -26,23 +29,13 @@ namespace DevSyncLib
             return other != null && Path == other.Path && Length == other.Length && (IsDirectory || CompareDates(LastWriteTime, other.LastWriteTime));
         }
 
-        public static FsEntry FromFileInfo(string path, FileInfo file)
+        public static FsEntry FromFsInfo(string path, FileSystemInfo fsInfo, bool withLength)
         {
             return new FsEntry
             {
-                LastWriteTime = file.LastWriteTime,
+                LastWriteTime = fsInfo.LastWriteTime,
                 Path = NormalizePath(path),
-                Length = file.Length
-            };
-        }
-
-        public static FsEntry FromDirectoryInfo(string path, DirectoryInfo dir)
-        {
-            return new FsEntry
-            {
-                LastWriteTime = dir.LastWriteTime,
-                Path = NormalizePath(path),
-                Length = -1
+                Length = withLength ? (fsInfo as FileInfo)?.Length ?? -1 : -1
             };
         }
 

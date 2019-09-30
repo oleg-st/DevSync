@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
@@ -29,6 +30,10 @@ namespace DevSyncLib.Command
             {
                 writer.WriteString(mask);
             }
+        }
+
+        public InitRequest(ILogger logger) : base(logger)
+        {
         }
     }
 }

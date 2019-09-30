@@ -1,4 +1,6 @@
-﻿namespace DevSyncLib.Command
+﻿using DevSyncLib.Logger;
+
+namespace DevSyncLib.Command
 {
     public class ScanRequest : Packet
     {
@@ -9,6 +11,10 @@
         }
 
         public override void Write(Writer writer)
+        {
+        }
+
+        public ScanRequest(ILogger logger) : base(logger)
         {
         }
     }

@@ -54,6 +54,11 @@ namespace DevSyncLib.Command
         public void WriteFsEntry(FsEntry fsEntry)
         {
             WriteString(fsEntry.Path);
+            if (fsEntry.IsEndMarker)
+            {
+                return;
+            }
+
             WriteLong(fsEntry.Length);
             WriteDateTime(fsEntry.LastWriteTime);
         }

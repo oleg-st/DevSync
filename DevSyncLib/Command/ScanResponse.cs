@@ -1,30 +1,42 @@
 ﻿using System.Collections.Generic;
+using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
     public class ScanResponse : Packet
     {
         public override short Signature => 4;
-        public Dictionary<string, FsEntry> FileList;
+        public IEnumerable<FsEntry> FileList;
 
         public override void Read(Reader reader)
         {
-            int count = reader.ReadInt();
-            FileList = new Dictionary<string, FsEntry>(count);
-            for (int i = 0; i < count; i++)
+            FileList = ReadFsEntries(reader);
+        }
+
+        protected IEnumerable<FsEntry> ReadFsEntries(Reader reader)
+        {
+            while (true)
             {
                 var fsEntry = reader.ReadFsEntry();
-                FileList.Add(fsEntry.Path, fsEntry);
+                if (fsEntry.IsEndMarker)
+                {
+                    break;
+                }
+                yield return fsEntry;
             }
         }
 
         public override void Write(Writer writer)
         {
-            writer.WriteInt(FileList.Count);
-            foreach (var fsEntry in FileList.Values)
+            foreach (var fsEntry in FileList)
             {
                 writer.WriteFsEntry(fsEntry);
             }
+            writer.WriteFsEntry(FsEntry.EndMarker);
+        }
+
+        public ScanResponse(ILogger logger) : base(logger)
+        {
         }
     }
 }
