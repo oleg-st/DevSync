@@ -62,7 +62,7 @@ namespace DevSync
             {
                 using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
                 {
-                    var assemblyPath = Path.GetDirectoryName(typeof(CommandRunner).Assembly.Location);
+                    var assemblyPath = Path.GetDirectoryName(typeof(PacketStream).Assembly.Location);
 
                     foreach (var filename in files)
                     {

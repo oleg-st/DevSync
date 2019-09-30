@@ -1,9 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using DevSyncLib;
+using DevSyncLib.Command;
 using DevSyncLib.Logger;
 
-namespace DevSyncLib.Command
+namespace DevSyncAgent
 {
     public class CommandRunner
     {
