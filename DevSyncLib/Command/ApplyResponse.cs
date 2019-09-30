@@ -6,11 +6,10 @@ namespace DevSyncLib.Command
     {
         public override short Signature => 6;
 
-        public List<FsChangeResult> Result;
+        public IEnumerable<FsChangeResult> Result;
 
-        public override void Read(Reader reader)
+        public IEnumerable<FsChangeResult> ReadResults(Reader reader)
         {
-            Result = new List<FsChangeResult>();
             while (true)
             {
                 var fsChangeResult = reader.ReadFsChangeResult();
@@ -18,8 +17,13 @@ namespace DevSyncLib.Command
                 {
                     break;
                 }
-                Result.Add(fsChangeResult);
+                yield return fsChangeResult;
             }
+        }
+
+        public override void Read(Reader reader)
+        {
+            Result = ReadResults(reader);
         }
 
         public override void Write(Writer writer)

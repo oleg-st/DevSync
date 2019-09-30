@@ -29,7 +29,7 @@ namespace DevSyncLib
                 }
 
                 var di = new DirectoryInfo(fullPath);
-                foreach (var file in di.GetFiles())
+                foreach (var file in di.EnumerateFiles())
                 {
                     var path = Path.Combine(relativePath, file.Name);
                     // skip symlinks and excludes
@@ -47,7 +47,7 @@ namespace DevSyncLib
                     }
                 }
 
-                foreach (var dir in di.GetDirectories())
+                foreach (var dir in di.EnumerateDirectories())
                 {
                     var path = Path.Combine(relativePath, dir.Name);
                     // skip symlinks and excludes

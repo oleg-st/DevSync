@@ -10,10 +10,6 @@ namespace DevSyncLib.Command
         private readonly ILogger _logger;
 
         protected BinaryReader BinaryReader;
-        // same size as chunk size
-        private const int BUFFER_LENGTH = ChunkWriteStream.ChunkSize;
-        private Memory<byte> _buffer = new byte[BUFFER_LENGTH];
-
         public Reader(Stream stream, ILogger logger)
         {
             _logger = logger;
@@ -105,6 +101,9 @@ namespace DevSyncLib.Command
 
         public bool ReadFsChangeBody(string path, FsChange fsChange)
         {
+            const int bufferLength = 65536;
+            Span<byte> buffer = stackalloc byte[bufferLength];
+
             string tempPath = null;
             FileStream fs = null;
             bool bodyReadSuccess = false;
@@ -121,38 +120,28 @@ namespace DevSyncLib.Command
                         return false;
                     }
 
-                    if (chunkSize > BUFFER_LENGTH)
-                    {
-                        throw new SyncException("Chunk is too long");
-                    }
-
-                    var totalRead = 0;
                     var remain = chunkSize;
-
                     while (remain > 0)
                     {
-                        int read = BinaryReader.Read(_buffer.Slice(totalRead, remain).Span);
-                        if (read == 0)
+                        var read = BinaryReader.Read(buffer.Slice(0, Math.Min(bufferLength, remain)));
+                        if (read <= 0)
                         {
-                            throw new EndOfStreamException(
-                                $"Premature end of stream ({totalRead}, {remain}, {chunkSize})");
+                            throw new EndOfStreamException($"Premature end of stream {remain}, {chunkSize}, {read})");
                         }
 
-                        totalRead += read;
+                        if (written == 0)
+                        {
+                            var directoryName = Path.GetDirectoryName(path);
+                            Directory.CreateDirectory(directoryName);
+                            tempPath = Path.Combine(directoryName,
+                                "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
+                            fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                        }
+
+                        fs?.Write(buffer.Slice(0, read));
+                        written += read;
                         remain -= read;
                     }
-
-                    if (written == 0)
-                    {
-                        var directoryName = Path.GetDirectoryName(path);
-                        Directory.CreateDirectory(directoryName);
-                        tempPath = Path.Combine(directoryName,
-                            "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
-                        fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-                    }
-
-                    fs?.Write(_buffer.Slice(0, totalRead).Span);
-                    written += totalRead;
                 } while (chunkSize > 0);
 
                 bodyReadSuccess = written == fsChange.FsEntry.Length;
@@ -192,6 +181,9 @@ namespace DevSyncLib.Command
 
         public void SkipFsChangeBody()
         {
+            const int bufferLength = 65536;
+            Span<byte> buffer = stackalloc byte[bufferLength];
+
             do
             {
                 var chunkSize = ReadInt();
@@ -200,15 +192,10 @@ namespace DevSyncLib.Command
                     return;
                 }
 
-                if (chunkSize > BUFFER_LENGTH)
-                {
-                    throw new SyncException("Chunk is too long");
-                }
-
                 var remain = chunkSize;
                 while (remain > 0)
                 {
-                    var read = BinaryReader.Read(_buffer.Span);
+                    var read = BinaryReader.Read(buffer.Slice(0, Math.Min(bufferLength, remain)));
                     if (read == 0)
                     {
                         throw new EndOfStreamException();

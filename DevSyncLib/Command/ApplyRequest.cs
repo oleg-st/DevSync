@@ -20,9 +20,8 @@ namespace DevSyncLib.Command
         }
 
         // read and apply changes
-        public List<FsChangeResult> ReadAndApplyChanges()
+        public IEnumerable<FsChangeResult> ReadAndApplyChanges()
         {
-            var list = new List<FsChangeResult>();
             while (true)
             {
                 var fsChange = Reader.ReadFsChange();
@@ -125,16 +124,18 @@ namespace DevSyncLib.Command
                         break;
                 }
 
-                list.Add(new FsChangeResult
+                // TODO: skip ok codes (sender do not use them for now)
+                if (resultCode != FsChangeResultCode.Ok)
                 {
-                    ChangeType = fsChange.ChangeType,
-                    Path = fsChange.FsEntry.Path,
-                    ResultCode = resultCode,
-                    Error = error
-                });
+                    yield return new FsChangeResult
+                    {
+                        ChangeType = fsChange.ChangeType,
+                        Path = fsChange.FsEntry.Path,
+                        ResultCode = resultCode,
+                        Error = error
+                    };
+                }
             }
-
-            return list;
         }
 
         public override void Write(Writer writer)

@@ -32,6 +32,7 @@ namespace DevSync
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
         private readonly object _syncHasWork = new object();
+        private readonly ApplyRequest _applyRequest;
 
         public Sender(SyncOptions syncOptions, ILogger logger)
         {
@@ -50,6 +51,11 @@ namespace DevSync
             _needScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
+            _applyRequest = new ApplyRequest
+            {
+                BasePath = _srcPath,
+                Changes = new List<FsChange>(CHANGES_MAX_COUNT)
+            };
         }
 
         private void Scan()
@@ -272,11 +278,6 @@ namespace DevSync
         {
             var sw = Stopwatch.StartNew();
 
-            var applyRequest = new ApplyRequest
-            {
-                BasePath = _srcPath
-            };
-
             // fetch changes
             long totalSize = 0;
             lock (_changes)
@@ -286,7 +287,7 @@ namespace DevSync
                     return true;
                 }
 
-                applyRequest.Changes = new List<FsChange>(CHANGES_MAX_COUNT);
+                _applyRequest.Changes.Clear();
                 int itemsCount = 0;
                 foreach (var fsChange in _changes.Values)
                 {
@@ -295,24 +296,24 @@ namespace DevSync
                         break;
                     }
 
-                    applyRequest.Changes.Add(fsChange);
+                    _applyRequest.Changes.Add(fsChange);
                     itemsCount++;
                     totalSize += fsChange.BodySize;
                 }
             }
 
-            _logger.Log(applyRequest.Changes.Count == 1
-                ? applyRequest.Changes.First().ToString()
-                : $"Sending {applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
+            _logger.Log(_applyRequest.Changes.Count == 1
+                ? _applyRequest.Changes.First().ToString()
+                : $"Sending {_applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
 
-            var response = _agentStarter.SendCommand<ApplyResponse>(applyRequest);
+            var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
 
             bool hasErrors = false;
             // process sent changes
             lock (_changes)
             {
-                foreach (var fsChange in applyRequest.Changes)
+                foreach (var fsChange in _applyRequest.Changes)
                 {
                     if (!fsChange.Expired)
                     {
@@ -353,7 +354,7 @@ namespace DevSync
             }
 
             NotifyHasWork();
-            _logger.Log($"Sent {(applyRequest.Changes.Count == 1 ? "change" : $"{applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
+            _logger.Log($"Sent {(_applyRequest.Changes.Count == 1 ? "change" : $"{_applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms");
 
             return !hasErrors;
         }
