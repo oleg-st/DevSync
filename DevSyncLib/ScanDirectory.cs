@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using DevSyncLib.Logger;
@@ -10,13 +9,13 @@ namespace DevSyncLib
     {
         private readonly FileMaskList _excludeList;
         private readonly ILogger _logger;
-        private readonly bool _withLength;
+        private readonly bool _withInfo;
 
-        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withLength = true)
+        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withInfo = true)
         {
             _logger = logger;
             _excludeList = excludeList;
-            _withLength = withLength;
+            _withInfo = withInfo;
         }
 
         public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "")
@@ -34,7 +33,6 @@ namespace DevSyncLib
             }
             catch (Exception ex)
             {
-                // TODO: ignored errors
                 _logger.Log($"Scan error {ex}", LogLevel.Warning);
             }
 
@@ -60,11 +58,10 @@ namespace DevSyncLib
 
                         try
                         {
-                            fsEntry = FsEntry.FromFsInfo(path, fsInfo, _withLength);
+                            fsEntry = FsEntry.FromFsInfo(path, fsInfo, _withInfo);
                         }
                         catch (Exception ex)
                         {
-                            // TODO: ignored errors
                             _logger.Log($"Scan error {ex}", LogLevel.Warning);
                         }
 

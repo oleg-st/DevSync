@@ -29,13 +29,13 @@ namespace DevSyncLib
             return other != null && Path == other.Path && Length == other.Length && (IsDirectory || CompareDates(LastWriteTime, other.LastWriteTime));
         }
 
-        public static FsEntry FromFsInfo(string path, FileSystemInfo fsInfo, bool withLength)
+        public static FsEntry FromFsInfo(string path, FileSystemInfo fsInfo, bool withInfo)
         {
             return new FsEntry
             {
-                LastWriteTime = fsInfo.LastWriteTime,
+                LastWriteTime = withInfo ? fsInfo.LastWriteTime : DateTime.MinValue,
                 Path = NormalizePath(path),
-                Length = withLength ? (fsInfo as FileInfo)?.Length ?? -1 : -1
+                Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 : -1
             };
         }
 
