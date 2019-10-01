@@ -103,6 +103,7 @@ namespace DevSync
                         return;
                     }
 
+                    Console.Title = syncOptions.ToString();
                     using var sender = new Sender(syncOptions, logger);
                     sender.Run();
                 }
