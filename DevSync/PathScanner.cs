@@ -44,23 +44,12 @@ namespace DevSync
 
             private void AddDirectoryContents(string path)
             {
-                var sw = Stopwatch.StartNew();
-                int itemsCount = 0;
-                long itemsSize = 0;
                 var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList);
                 var srcList = scanDirectory.ScanPath(_sender._srcPath, path).ToDictionary(x => x.Path, y => y);
                 foreach (var srcEntry in srcList.Values)
                 {
                     var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
                     _sender.AddChange(fsChange);
-                    itemsCount++;
-                    itemsSize += fsChange.BodySize;
-                }
-
-                if (itemsCount > 0)
-                {
-                    _sender._logger.Log(
-                        $"Scanned directory {path} contents in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(itemsSize)} to send");
                 }
             }
 
