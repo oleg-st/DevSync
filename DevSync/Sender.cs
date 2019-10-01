@@ -439,14 +439,6 @@ namespace DevSync
             }
         }
 
-        private void ScanTaskBody()
-        {
-            while (!_needQuit)
-            {
-
-            }
-        }
-
         private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
         {
             _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);

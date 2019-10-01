@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using DevSyncLib;
@@ -45,11 +44,9 @@ namespace DevSync
             private void AddDirectoryContents(string path)
             {
                 var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList);
-                var srcList = scanDirectory.ScanPath(_sender._srcPath, path).ToDictionary(x => x.Path, y => y);
-                foreach (var srcEntry in srcList.Values)
+                foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                 {
-                    var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
-                    _sender.AddChange(fsChange);
+                    _sender.AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = srcEntry });
                 }
             }
 
@@ -102,7 +99,6 @@ namespace DevSync
                 {
                     _pathsToScan.Add(path);
                 }
-
                 NotifyHasWork();
             }
 
