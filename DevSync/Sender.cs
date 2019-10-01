@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
@@ -11,7 +12,7 @@ using Task = System.Threading.Tasks.Task;
 
 namespace DevSync
 {
-    public class Sender : IDisposable
+    public partial class Sender : IDisposable
     {
         private readonly ILogger _logger;
         private bool _needScan;
@@ -34,10 +35,12 @@ namespace DevSync
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
         private readonly object _syncHasWork = new object();
         private readonly ApplyRequest _applyRequest;
-
+        private readonly PathScanner _pathScanner;
+        
         public Sender(SyncOptions syncOptions, ILogger logger)
         {
             _logger = logger;
+            _pathScanner = new PathScanner(this);
 
             if (!Directory.Exists(syncOptions.SourcePath))
             {
@@ -130,7 +133,7 @@ namespace DevSync
         {
             return FsEntry.NormalizePath(Path.GetRelativePath(_srcPath, fullPath));
         }
-
+        
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
             var path = GetPath(e.FullPath);
@@ -144,8 +147,13 @@ namespace DevSync
                 return;
             }
 
-            var fsEntry = FsEntry.FromFilename(e.FullPath, path);
-            AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = fsEntry });
+            var fsChange = FsChange.FromFilename(e.FullPath, path);
+            AddChange(fsChange);
+            // scan new directory
+            if (e.ChangeType == WatcherChangeTypes.Created && fsChange.FsEntry.IsDirectory)
+            {
+                _pathScanner.Add(fsChange.FsEntry.Path);
+            }
         }
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
@@ -161,8 +169,7 @@ namespace DevSync
                 return;
             }
 
-            var fsEntry = FsEntry.FromFilename(e.FullPath, path);
-            AddChange(new FsChange { ChangeType = FsChangeType.Remove, FsEntry = fsEntry });
+            AddChange(FsChange.FromFilename(e.FullPath, path));
         }
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
@@ -180,8 +187,7 @@ namespace DevSync
                 // old file is not excluded -> delete it
                 if (!_excludeList.IsMatch(oldPath))
                 {
-                    var oldFsEntry = FsEntry.FromFilename(e.OldFullPath, oldPath);
-                    AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = oldFsEntry});
+                    AddChange(FsChange.FromFilename(e.OldFullPath, oldPath));
                 }
 
                 // both files are excluded -> do nothing
@@ -191,15 +197,16 @@ namespace DevSync
                 // old file is excluded -> send new file
                 if (_excludeList.IsMatch(oldPath))
                 {                    
-                    var fsEntry = FsEntry.FromFilename(e.FullPath, path);
-                    AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = fsEntry });
+                    AddChange(FsChange.FromFilename(e.FullPath, path));
                 }
                 else
                 {
                     // both files are excluded -> send rename
-                    var oldFsEntry = FsEntry.FromFilename(e.OldFullPath, oldPath);
-                    var fsEntry = FsEntry.FromFilename(e.FullPath, path);
-                    AddChange(new FsChange { ChangeType = FsChangeType.Rename, FsEntry = fsEntry, OldFsEntry = oldFsEntry });
+                    var fsChange = FsChange.FromFilename(e.FullPath, path);
+                    var oldFsChange = FsChange.FromFilename(e.OldFullPath, oldPath);
+                    fsChange.ChangeType = FsChangeType.Rename;
+                    fsChange.OldFsEntry = oldFsChange.FsEntry;
+                    AddChange(fsChange);
                 }
             }
         }
@@ -228,6 +235,7 @@ namespace DevSync
                 Monitor.Pulse(_syncHasWork);
             }
         }
+       
 
         private void WaitForWork()
         {
@@ -331,6 +339,11 @@ namespace DevSync
                                     if (fsChange.ChangeType == FsChangeType.Rename)
                                     {
                                         fsChange.ChangeType = FsChangeType.Change;
+                                        // scan if directory
+                                        if (fsChange.FsEntry.IsDirectory)
+                                        {
+                                            _pathScanner.Add(fsChange.FsEntry.Path);
+                                        }
                                     }
                                     else
                                     {
@@ -376,8 +389,12 @@ namespace DevSync
             _fileSystemWatcher.Created += OnWatcherChanged;
             _fileSystemWatcher.Deleted += OnWatcherDeleted;
             _fileSystemWatcher.Renamed += OnWatcherRenamed;
+            _fileSystemWatcher.Error += FileSystemWatcherOnError;
+            _fileSystemWatcher.InternalBufferSize = 64 * 1024;
             _fileSystemWatcher.IncludeSubdirectories = true;
             _fileSystemWatcher.EnableRaisingEvents = true;
+
+            Task.Factory.StartNew(_pathScanner.Run, TaskCreationOptions.LongRunning);
 
             while (!_needQuit)
             {
@@ -422,9 +439,30 @@ namespace DevSync
             }
         }
 
+        private void ScanTaskBody()
+        {
+            while (!_needQuit)
+            {
+
+            }
+        }
+
+        private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
+        {
+            _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);
+            _needScan = true;
+            _pathScanner.Clear();
+            lock (_changes)
+            {
+                _changes.Clear();
+            }
+            NotifyHasWork();
+        }
+
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
             _needQuit = true;
+            _pathScanner.Stop();
             NotifyHasWork();
             e.Cancel = true;
         }

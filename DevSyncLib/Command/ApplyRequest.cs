@@ -179,7 +179,15 @@ namespace DevSyncLib.Command
                     case FsChangeType.Rename:
                         try
                         {
-                            File.Move(Path.Combine(BasePath, fsChange.OldFsEntry.Path), path, true);
+                            if (fsChange.FsEntry.IsDirectory)
+                            {
+                                Directory.Move(Path.Combine(BasePath, fsChange.OldFsEntry.Path), path);
+                            }
+                            else
+                            {
+                                File.Move(Path.Combine(BasePath, fsChange.OldFsEntry.Path), path, true);
+                            }
+
                             resultCode = FsChangeResultCode.Ok;
                         }
                         catch (Exception ex)

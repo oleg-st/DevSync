@@ -14,7 +14,10 @@ namespace DevSyncLib.Logger
 
         public void Log(string text, LogLevel level)
         {
-            File.AppendAllText(_filename, $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}\n");
+            lock (this)
+            {
+                File.AppendAllText(_filename, $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}\n");
+            }
         }
     }
 }

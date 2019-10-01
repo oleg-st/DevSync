@@ -35,18 +35,8 @@ namespace DevSyncLib
             {
                 LastWriteTime = withInfo ? fsInfo.LastWriteTime : DateTime.MinValue,
                 Path = NormalizePath(path),
-                Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 : -1
-            };
-        }
-
-        public static FsEntry FromFilename(string fullname, string path)
-        {
-            var file = new FileInfo(fullname);
-            return new FsEntry
-            {
-                LastWriteTime = file.Exists ? file.LastWriteTime : DateTime.UnixEpoch,
-                Path = path,
-                Length = !file.Exists || (file.Attributes & FileAttributes.Directory) != 0 ? -1 : file.Length
+                Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 : 
+                    (fsInfo.Attributes & FileAttributes.Directory) != 0 ? - 1 : 0
             };
         }
     }
