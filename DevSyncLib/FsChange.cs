@@ -26,7 +26,7 @@ namespace DevSyncLib
         {
             var fsChange = new FsChange
             {
-                FsEntry = new FsEntry { Path =  path}
+                FsEntry = new FsEntry { Path = path }
             };
 
             // file
