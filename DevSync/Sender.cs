@@ -278,7 +278,7 @@ namespace DevSync
             while (doubleSize >= 1024 && order < sizes.Length - 1)
             {
                 order++;
-                doubleSize = doubleSize / 1024;
+                doubleSize /= 1024;
             }
             return $"{doubleSize:0.##} {sizes[order]}";
         }

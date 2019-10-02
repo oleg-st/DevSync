@@ -4,8 +4,8 @@ namespace DevSyncLib.Command.Compression
 {
     public interface ICompression
     {
-        bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int written);
+        bool TryCompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written);
 
-        bool TryDecompress(ReadOnlySpan<byte> source, Span<byte> destination, out int written);
+        bool TryDecompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written);
     }
 }

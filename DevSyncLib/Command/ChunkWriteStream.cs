@@ -19,8 +19,8 @@ namespace DevSyncLib.Command
         public const int FlushTimeout = 500;
         // 4 bytes (int32) for chunk length
         private const int LENGTH_SIZE = 4;
-        private Memory<byte> _chunkMemory = new byte[ChunkSize + LENGTH_SIZE];
-        private Memory<byte> _chunkCompressedMemory = new byte[ChunkSize + LENGTH_SIZE];
+        private readonly byte[] _chunkBytes = new byte[ChunkSize + LENGTH_SIZE];
+        private readonly byte[] _chunkCompressedBytes = new byte[ChunkSize + LENGTH_SIZE];
         private int _chunkLength;
         private Stopwatch _flushStopwatch;
 
@@ -35,20 +35,20 @@ namespace DevSyncLib.Command
             FlushChunk();
         }
 
-        protected void WriteChunk(Span<byte> span, int length, bool compressed)
+        protected void WriteChunk(byte[] buffer, int length, bool compressed)
         {
-            span[0] = (byte)(length & 0xFF);
-            span[1] = (byte)((length >> 8) & 0xFF);
-            span[2] = (byte)((length >> 16) & 0xFF);
-            span[3] = (byte)((length >> 24) & 0x7F);
+            buffer[0] = (byte)(length & 0xFF);
+            buffer[1] = (byte)((length >> 8) & 0xFF);
+            buffer[2] = (byte)((length >> 16) & 0xFF);
+            buffer[3] = (byte)((length >> 24) & 0x7F);
             if (compressed)
             {
-                span[3] |= 0x80;
+                buffer[3] |= 0x80;
             }
             // write length and data
             try
             {
-                _baseStream.Write(span.Slice(0, LENGTH_SIZE + length));
+                _baseStream.Write(buffer, 0, LENGTH_SIZE + length);
                 _baseStream.Flush();
             }
             catch (EndOfStreamException)
@@ -59,9 +59,8 @@ namespace DevSyncLib.Command
 
         protected bool TryCompress(out int written)
         {
-            // TODO: tune quality and window
-            return _compression.TryCompress(_chunkMemory.Slice(LENGTH_SIZE, _chunkLength).Span,
-                _chunkCompressedMemory.Slice( LENGTH_SIZE, ChunkSize).Span, out written);
+            return _compression.TryCompress(_chunkBytes, LENGTH_SIZE, _chunkLength,
+                _chunkCompressedBytes,  LENGTH_SIZE, ChunkSize, out written);
         }
 
         protected void FlushChunk()
@@ -70,11 +69,11 @@ namespace DevSyncLib.Command
             {
                 if (_chunkLength >= CompressionThreshold && TryCompress(out var written))
                 {
-                    WriteChunk(_chunkCompressedMemory.Span, written, true);
+                    WriteChunk(_chunkCompressedBytes, written, true);
                 }
                 else
                 {
-                    WriteChunk(_chunkMemory.Span, _chunkLength, false);
+                    WriteChunk(_chunkBytes, _chunkLength, false);
                 }
 
                 _chunkLength = 0;
@@ -104,17 +103,11 @@ namespace DevSyncLib.Command
 
         public override void Write(byte[] buffer, int offset, int count)
         {
-            Write(new Span<byte>(buffer, offset, count));
-        }
-
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            int offset = 0;
-            int count = buffer.Length;
             while (count > 0)
             {
                 var toCopy = Math.Min(count, ChunkSize - _chunkLength);
-                buffer.Slice( offset, toCopy).CopyTo(_chunkMemory.Slice(LENGTH_SIZE + _chunkLength, toCopy).Span);
+                Buffer.BlockCopy(buffer, offset, _chunkBytes, LENGTH_SIZE + _chunkLength, toCopy);
+
                 _chunkLength += toCopy;
                 offset += toCopy;
                 count -= toCopy;

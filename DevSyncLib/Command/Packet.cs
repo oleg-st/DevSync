@@ -4,11 +4,11 @@ namespace DevSyncLib.Command
 {
     public abstract class Packet
     {
-        protected readonly ILogger _logger;
+        protected readonly ILogger Logger;
 
         protected Packet(ILogger logger)
         {
-            _logger = logger;
+            Logger = logger;
         }
 
         public abstract short Signature { get; }

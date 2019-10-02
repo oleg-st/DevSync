@@ -90,7 +90,7 @@ namespace DevSyncLib.Command
                     // directory
                     if (Directory.Exists(path))
                     {
-                        var scanDirectory = new ScanDirectory(_logger, excludeList, false);
+                        var scanDirectory = new ScanDirectory(Logger, excludeList, false);
                         Exception exception = null;
                         foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.FsEntry.Path))
                         {
@@ -112,7 +112,7 @@ namespace DevSyncLib.Command
                                 {
                                     exception = ex;
                                 }
-                                _logger.Log($"Delete error {fsEntryPath} {ex}", LogLevel.Warning);
+                                Logger.Log($"Delete error {fsEntryPath} {ex}", LogLevel.Warning);
                             }
                         }
 
@@ -126,7 +126,7 @@ namespace DevSyncLib.Command
                             {
                                 exception = ex;
                             }
-                            _logger.Log($"Delete error {path} {ex}", LogLevel.Warning);
+                            Logger.Log($"Delete error {path} {ex}", LogLevel.Warning);
                         }
 
                         if (exception == null)

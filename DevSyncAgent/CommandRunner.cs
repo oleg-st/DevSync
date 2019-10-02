@@ -24,20 +24,13 @@ namespace DevSyncAgent
         {
             try
             {
-                switch (request)
+                return request switch
                 {
-                    case ScanRequest versionCommandRequest:
-                        return RunScan(versionCommandRequest);
-
-                    case InitRequest initRequest:
-                        return RunInit(initRequest);
-
-                    case ApplyRequest applyRequest:
-                        return RunApply(applyRequest);
-
-                    default:
-                        throw new SyncException($"Unknown command {request.GetType()}");
-                }
+                    ScanRequest versionCommandRequest => RunScan(versionCommandRequest),
+                    InitRequest initRequest => RunInit(initRequest),
+                    ApplyRequest applyRequest => RunApply(applyRequest),
+                    _ => throw new SyncException($"Unknown command {request.GetType()}"),
+                };
             }
             catch (EndOfStreamException)
             {

@@ -42,8 +42,8 @@ namespace DevSyncLib.Command
         {
             ReadFill(_chunkCompressedBytes, 0, _chunkLength);
             if (!_compression.TryDecompress(
-                new ReadOnlySpan<byte>(_chunkCompressedBytes, 0, _chunkLength),
-                new Span<byte>(_chunkBytes, 0, ChunkSize), out var written))
+                _chunkCompressedBytes, 0, _chunkLength,
+                _chunkBytes, 0, ChunkSize, out var written))
             {
                 throw new SyncException("Chunk decompress failed");
             }
@@ -83,7 +83,7 @@ namespace DevSyncLib.Command
                 }
                 var toCopy = Math.Min(count, _chunkLength - _chunkPosition);
 
-                Array.Copy(_chunkBytes, _chunkPosition, buffer, offset, toCopy);
+                Buffer.BlockCopy(_chunkBytes, _chunkPosition, buffer, offset, toCopy);
                 _chunkPosition += toCopy;
                 offset += toCopy;
                 count -= toCopy;
