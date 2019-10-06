@@ -83,7 +83,7 @@ namespace DevSync
                 sshCommand.EndExecute(asyncResult);
                 if (sshCommand.ExitStatus != 0)
                 {
-                    throw new SyncException($"Deploy failed {path} ({sshCommand.ExitStatus})");
+                    throw new SyncException($"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
                 }
             }
 

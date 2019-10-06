@@ -46,8 +46,9 @@ namespace DevSync
                 var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList);
                 foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                 {
-                    _sender.AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = srcEntry });
+                    _sender.AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = srcEntry }, false);
                 }
+                _sender.NotifyHasWork();
             }
 
             private void WaitForWork()

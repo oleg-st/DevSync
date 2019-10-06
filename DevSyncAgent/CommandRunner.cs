@@ -26,7 +26,7 @@ namespace DevSyncAgent
             {
                 return request switch
                 {
-                    ScanRequest versionCommandRequest => RunScan(versionCommandRequest),
+                    ScanRequest _ => RunScan(),
                     InitRequest initRequest => RunInit(initRequest),
                     ApplyRequest applyRequest => RunApply(applyRequest),
                     _ => throw new SyncException($"Unknown command {request.GetType()}"),
@@ -55,7 +55,7 @@ namespace DevSyncAgent
             }
         }
 
-        protected ScanResponse RunScan(ScanRequest request)
+        protected ScanResponse RunScan()
         {
             CheckInitialized();
 

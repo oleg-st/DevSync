@@ -91,7 +91,7 @@ namespace DevSync
                 {
                     var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
                     itemsCount++;
-                    AddChange(fsChange);
+                    AddChange(fsChange, false);
                 }
 
                 // remove from dest list
@@ -105,7 +105,7 @@ namespace DevSync
             foreach (var destEntry in destList.Values)
             {
                 itemsCount++;
-                AddChange(new FsChange { ChangeType = FsChangeType.Remove, FsEntry = destEntry });
+                AddChange(new FsChange { ChangeType = FsChangeType.Remove, FsEntry = destEntry }, false);
             }
 
             _needScan = false;
@@ -113,7 +113,7 @@ namespace DevSync
             _logger.Log($"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
         }
 
-        private void AddChange(FsChange fsChange)
+        private void AddChange(FsChange fsChange, bool notifyHasWork = true)
         {
             lock (_changes)
             {
@@ -126,7 +126,11 @@ namespace DevSync
                 _changes[fsChange.Key] = fsChange;
                 _changesSize += fsChange.BodySize;
             }
-            NotifyHasWork();
+
+            if (notifyHasWork)
+            {
+                NotifyHasWork();
+            }
         }
 
         private string GetPath(string fullPath)
@@ -447,6 +451,7 @@ namespace DevSync
             lock (_changes)
             {
                 _changes.Clear();
+                _changesSize = 0;
             }
             NotifyHasWork();
         }
