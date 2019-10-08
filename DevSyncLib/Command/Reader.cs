@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using DevSyncLib.Logger;
 
@@ -10,6 +11,12 @@ namespace DevSyncLib.Command
         private readonly ILogger _logger;
 
         protected BinaryReader BinaryReader;
+
+        // detect shebang (#!) to make file executable
+        private static readonly bool PlatformHasChmod = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        private static readonly byte[] ShebangBytes = { (byte)'#', (byte)'!' };
+        private static readonly int ShebangLength = ShebangBytes.Length;
+
         public Reader(Stream stream, ILogger logger)
         {
             _logger = logger;
@@ -109,6 +116,8 @@ namespace DevSyncLib.Command
         {
             const int bufferLength = 65536;
             Span<byte> buffer = stackalloc byte[bufferLength];
+            var shebangPosition = 0;
+            var doChmod = false;
 
             string tempPath = null;
             FileStream fs = null;
@@ -144,6 +153,24 @@ namespace DevSyncLib.Command
                             fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
                         }
 
+                        if (PlatformHasChmod && shebangPosition < ShebangLength)
+                        {
+                            for (var i = 0; i < read;)
+                            {
+                                if (buffer[i++] != ShebangBytes[shebangPosition++])
+                                {
+                                    // no shebang
+                                    shebangPosition = int.MaxValue;
+                                    break;
+                                }
+                                if (shebangPosition == ShebangLength)
+                                {
+                                    doChmod = true;
+                                    break;
+                                }
+                            }
+                        }
+
                         fs?.Write(buffer.Slice(0, read));
                         written += read;
                         remain -= read;
@@ -151,6 +178,12 @@ namespace DevSyncLib.Command
                 } while (chunkSize > 0);
 
                 bodyReadSuccess = written == fsChange.FsEntry.Length;
+                if (bodyReadSuccess && doChmod)
+                {
+                    // 0755, rwxr-xr-x
+                    fs.StreamChmod(0b111_101_101);
+                }
+
                 return bodyReadSuccess;
             }
             catch (Exception)
