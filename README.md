@@ -13,7 +13,7 @@ Synchronize source directory to destination directory with exclude file:
 dotnet DevSync.dll &lt;source&gt; &lt;destination&gt; &lt;exclude file&gt; --deploy  
 
 Synchronize using .realsync config file:  
-dotnet DevSync.dll --realsync <source> --deploy  
+dotnet DevSync.dll --realsync &lt;source&gt; --deploy  
 
 Use --deploy option to copy DevSyncAgent to ~/.devsync directory on first run (~60kb).  
 You must have ~/.ssh/id_rsa key file to use private key authentication.
