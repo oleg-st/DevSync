@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using DevSyncLib;
@@ -14,6 +15,13 @@ namespace DevSync
         public List<string> ExcludeList { get; set; } = new List<string>();
 
         public bool DeployAgent { get; set; }
+
+        public string KeyFilePath { get; set; }
+
+        public SyncOptions()
+        {
+            KeyFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh/id_rsa");
+        }
 
         public static SyncOptions CreateFromSourceAndDestination(string sourcePath, string destinationPath)
         {

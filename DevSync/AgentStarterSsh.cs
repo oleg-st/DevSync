@@ -15,7 +15,7 @@ namespace DevSync
         private SshClient _sshClient;
         private SshCommand _sshCommand;
 
-        private string _host, _username;
+        private string _host, _username, _keyFilePath;
         public string Host
         {
             get => _host;
@@ -36,7 +36,20 @@ namespace DevSync
             }
         }
 
+        public string KeyFilePath
+        {
+            get => _keyFilePath;
+            set
+            {
+                _keyFilePath = value;
+                _privateKeyFile = null;
+                IsStarted = false;
+            }
+        }
+
         public bool DeployAgent { get; set; }
+
+        private PrivateKeyFile _privateKeyFile;
 
         protected override void Cleanup()
         {
@@ -90,22 +103,61 @@ namespace DevSync
             Logger.Log($"Deployed agent in {sw.ElapsedMilliseconds} ms");
         }
 
+        private string GetKeyPassPhrase()
+        {
+            Logger.Pause();
+            Console.Write("Enter key passphrase: ");
+            var keyPassPhrase = "";
+            do
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Enter)
+                {
+                    break;
+                }
+
+                if (key.Key != ConsoleKey.Backspace)
+                {
+                    keyPassPhrase += key.KeyChar;
+                }
+                else if (key.Key == ConsoleKey.Backspace && keyPassPhrase.Length > 0)
+                {
+                    keyPassPhrase = keyPassPhrase.Substring(0, keyPassPhrase.Length - 1);
+                }
+            } while (true);
+            Console.WriteLine();
+            Logger.Resume();
+            return keyPassPhrase;
+        }
+
+        private PrivateKeyFile GetPrivateKeyFile()
+        {
+            if (_privateKeyFile == null)
+            {
+
+                if (!File.Exists(_keyFilePath))
+                {
+                    throw new SyncException($"Your ssh private key is not found: {_keyFilePath}. Use ssh-keygen to create");
+                }
+                try
+                {
+                    _privateKeyFile = new PrivateKeyFile(_keyFilePath);
+                }
+                catch (SshPassPhraseNullOrEmptyException)
+                {
+                    _privateKeyFile = new PrivateKeyFile(_keyFilePath, GetKeyPassPhrase());
+                }
+            }
+            return _privateKeyFile;
+        }
+
         public override void DoStart()
         {
             try
             {
                 Cleanup();
-
-                // TODO: use default user ssh key
-                var privateKeyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    ".ssh/id_rsa");
-                if (!File.Exists(privateKeyPath))
-                {
-                    throw new SyncException($"Your ssh private key is not found: {privateKeyPath}. Use ssh-keygen");
-                }
-
                 var connectionInfo = new ConnectionInfo(_host, _username,
-                    new PrivateKeyAuthenticationMethod(_username, new PrivateKeyFile(privateKeyPath))
+                    new PrivateKeyAuthenticationMethod(_username, GetPrivateKeyFile())
                 )
                 {
                     RetryAttempts = int.MaxValue,

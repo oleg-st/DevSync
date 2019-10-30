@@ -135,7 +135,8 @@ namespace DevSync
                 {
                     Host = syncOptions.Host,
                     Username = syncOptions.UserName,
-                    DeployAgent = syncOptions.DeployAgent
+                    DeployAgent = syncOptions.DeployAgent,
+                    KeyFilePath = syncOptions.KeyFilePath,
                 };
             }
 

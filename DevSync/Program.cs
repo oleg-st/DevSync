@@ -28,6 +28,9 @@ namespace DevSync
 
             [Option("realsync", Default = null, HelpText = "Realsync source directory (with .realsync file)")]
             public string RealsyncPath { get; set; }
+
+            [Option("key", Default = null, HelpText = "Path to the identity (private key) for public key authentication. The default is ~/.ssh/id_dsa")]
+            public string KeyFilePath { get; set; }
         }
 
         static void PrintHelp(ParserResult<CommandLineOptions> parserResult)
@@ -66,6 +69,11 @@ namespace DevSync
             if (syncOptions == null)
             {
                 return null;
+            }
+
+            if (!string.IsNullOrEmpty(options.KeyFilePath))
+            {
+                syncOptions.KeyFilePath = options.KeyFilePath;
             }
 
             if (!options.NoExclude && syncOptions.ExcludeList.Count == 0)
