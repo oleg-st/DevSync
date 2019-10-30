@@ -143,5 +143,10 @@ namespace DevSync
             agentStarter.ExcludeList = syncOptions.ExcludeList;
             return agentStarter;
         }
+
+        public void Stop()
+        {
+            Cleanup();
+        }
     }
 }

@@ -16,7 +16,7 @@ namespace DevSync
     {
         private readonly ILogger _logger;
         private bool _needScan;
-        private bool _needQuit;
+        private volatile bool _needQuit;
         private bool _gitIsBusy;
         private FileSystemWatcher _fileSystemWatcher;
 
@@ -419,6 +419,10 @@ namespace DevSync
                 }
                 catch (SyncException ex)
                 {
+                    if (_needQuit)
+                    {
+                        break;
+                    }
                     _logger.Log(ex.Message, LogLevel.Error);
                     if (!ex.Recoverable)
                     {
@@ -428,8 +432,18 @@ namespace DevSync
                 }
                 catch (Exception ex)
                 {
+                    if (_needQuit)
+                    {
+                        break;
+                    }
+
                     _logger.Log(ex.Message, LogLevel.Error);
                     hasErrors = true;
+                }
+
+                if (_needQuit)
+                {
+                    break;
                 }
 
                 if (hasErrors)
@@ -456,11 +470,17 @@ namespace DevSync
             NotifyHasWork();
         }
 
-        private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        private void Stop()
         {
             _needQuit = true;
+            _agentStarter.Stop();
             _pathScanner.Stop();
             NotifyHasWork();
+        }
+
+        private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            Stop();
             e.Cancel = true;
         }
 
