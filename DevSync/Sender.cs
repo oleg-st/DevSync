@@ -36,11 +36,61 @@ namespace DevSync
         private readonly object _syncHasWork = new object();
         private readonly ApplyRequest _applyRequest;
         private readonly PathScanner _pathScanner;
-        
+        private readonly SentReporter _sentReporter;
+        private bool _isReady;
+
+        protected class SentReporter
+        {
+            private readonly Stopwatch _stopwatch;
+            private int _totalCount;
+            private long _totalSize;
+            private readonly ILogger _logger;
+            private string _lastChange;
+            private const int REPORT_INTERVAL = 1000;
+
+            public SentReporter(ILogger logger)
+            {
+                _logger = logger;
+                _stopwatch = new Stopwatch();
+            }
+
+            public void Report(List<FsChange> changes, long size)
+            {
+                _totalCount += changes.Count;
+                _totalSize += size;
+                if (_totalCount == 1 && changes.Count == 1)
+                {
+                    _lastChange =  changes.First().ToString();
+                }
+                if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > REPORT_INTERVAL)
+                {
+                    Flush();
+                }
+            }
+
+            public void Flush()
+            {
+                if (_totalCount <= 0)
+                {
+                    return;
+                }
+
+                _logger.Log(_totalCount == 1
+                    ? _lastChange
+                    : $"Sent {_totalCount} changes, {PrettySize(_totalSize)}");
+
+                _lastChange = "";
+                _totalCount = 0;
+                _totalSize = 0;
+                _stopwatch.Restart();
+            }
+        }
+
         public Sender(SyncOptions syncOptions, ILogger logger)
         {
             _logger = logger;
             _pathScanner = new PathScanner(this);
+            _sentReporter = new SentReporter(_logger);
 
             if (!Directory.Exists(syncOptions.SourcePath))
             {
@@ -215,17 +265,18 @@ namespace DevSync
             }
         }
 
-        private bool HasWork
+        private bool HasChanges
         {
             get
             {
                 lock (_changes)
                 {
-                    return _needQuit || _needScan || _changes.Count > 0;
+                    return _changes.Count > 0;
                 }
             }
         }
 
+        private bool HasWork => _needQuit || _needScan || HasChanges;
         private void SetGitIsBusy(bool value)
         {
             _gitIsBusy = value;
@@ -239,7 +290,6 @@ namespace DevSync
                 Monitor.Pulse(_syncHasWork);
             }
         }
-       
 
         private void WaitForWork()
         {
@@ -257,8 +307,10 @@ namespace DevSync
                     {
                         if (!_gitIsBusy)
                         {
+                            _sentReporter.Flush();
                             _logger.Log("Ready");
                             waitForReady = false;
+                            _isReady = true;
                         }
                     }
                     else
@@ -270,6 +322,15 @@ namespace DevSync
                 lock (_syncHasWork)
                 {
                     Monitor.Wait(_syncHasWork, timeout);
+                }
+            }
+
+            if (_isReady)
+            {
+                _isReady = false;
+                if (HasChanges)
+                {
+                    _logger.Log("Sending");
                 }
             }
         }
@@ -286,6 +347,7 @@ namespace DevSync
             }
             return $"{doubleSize:0.##} {sizes[order]}";
         }
+
 
         private bool SendChanges()
         {
@@ -314,10 +376,6 @@ namespace DevSync
                     totalSize += fsChange.BodySize;
                 }
             }
-
-            _logger.Log(_applyRequest.Changes.Count == 1
-                ? _applyRequest.Changes.First().ToString()
-                : $"Sending {_applyRequest.Changes.Count} changes, {PrettySize(totalSize)}");
 
             var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
@@ -375,11 +433,7 @@ namespace DevSync
             }
 
             NotifyHasWork();
-            lock (_changes)
-            {
-                _logger.Log(
-                    $"Sent {(_applyRequest.Changes.Count == 1 ? "change" : $"{_applyRequest.Changes.Count} changes")} in {sw.ElapsedMilliseconds} ms{(_changesSize > 0 ? $", {PrettySize(_changesSize)} to send" : "")}");
-            }
+            _sentReporter.Report(_applyRequest.Changes, _changesSize);
 
             return !hasErrors;
         }
