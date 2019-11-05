@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
@@ -54,12 +55,36 @@ namespace DevSync
         protected override void Cleanup()
         {
             base.Cleanup();
-
-            _sshCommand?.Dispose();
-            _sshClient?.Dispose();
+            IsStarted = false;
+            SshClient sshClient;
+            SshCommand sshCommand;
+            lock (this)
+            {
+                sshClient = _sshClient;
+                sshCommand = _sshCommand;
+            }
+            sshCommand?.Dispose();
+            sshClient?.Dispose();
         }
 
-        protected void DoDeployAgent(string path)
+        private void CleanupDeferred()
+        {
+            base.Cleanup();
+            IsStarted = false;
+            SshClient sshClient;
+            SshCommand sshCommand;
+            lock (this)
+            {
+                sshClient = _sshClient;
+                sshCommand = _sshCommand;
+            }
+            Task.Run(() =>
+            {
+                sshCommand?.Dispose();
+                sshClient?.Dispose();
+            });
+        }
+        protected void DoDeployAgent(SshClient sshClient, string path)
         {
             var sw = Stopwatch.StartNew();
             var files = new[]
@@ -86,7 +111,7 @@ namespace DevSync
                 }
 
                 var tarBytes = memoryStream.ToArray();
-                using var sshCommand = _sshClient.CreateCommand($"mkdir -p {path} && tar xf - -C {path}");
+                using var sshCommand = sshClient.CreateCommand($"mkdir -p {path} && tar xf - -C {path}");
                 var asyncResult = sshCommand.BeginExecute();
                 using (sshCommand.InputStream)
                 {
@@ -96,7 +121,8 @@ namespace DevSync
                 sshCommand.EndExecute(asyncResult);
                 if (sshCommand.ExitStatus != 0)
                 {
-                    throw new SyncException($"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
+                    throw new SyncException(
+                        $"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
                 }
             }
 
@@ -164,35 +190,41 @@ namespace DevSync
                     Timeout = new TimeSpan(0, 0, 20),
                 };
 
-                _sshClient = new SshClient(connectionInfo);
-                _sshClient.Connect();
-                _sshClient.ErrorOccurred += (sender, args) =>
+                var sshClient = new SshClient(connectionInfo);
+                sshClient.Connect();
+                sshClient.ErrorOccurred += (sender, args) =>
                 {
                     Logger.Log(args.Exception.Message, LogLevel.Error);
-                    IsStarted = false;
+                    // use cleanup on other thread to prevent race condition
+                    CleanupDeferred();
                 };
 
                 // TODO: path
                 var deployPath = ".devsync";
                 if (DeployAgent)
                 {
-                    DoDeployAgent(deployPath);
+                    DoDeployAgent(sshClient, deployPath);
                 }
 
                 /*
                  * COMPlus_EnableDiagnostics turns off clr-debug-pipe
                  * https://github.com/dotnet/coreclr/blob/master/Documentation/building/debugging-instructions.md
                  */
-                _sshCommand =
-                    _sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {deployPath}/DevSyncAgent.dll");
-                _sshCommand.BeginExecute(ar =>
+                var sshCommand =
+                    sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {deployPath}/DevSyncAgent.dll");
+                sshCommand.BeginExecute(ar =>
                 {
-                    Logger.Log($"Agent died with exit code {_sshCommand.ExitStatus}", LogLevel.Error);
-                    _sshCommand.Dispose();
-                    IsStarted = false;
+                    Logger.Log($"Agent died with exit code {sshCommand.ExitStatus}", LogLevel.Error);
+                    // use cleanup on other thread to prevent race condition
+                    CleanupDeferred();
                 });
 
-                PacketStream = new PacketStream(_sshCommand.OutputStream, _sshCommand.InputStream, Logger);
+                PacketStream = new PacketStream(sshCommand.OutputStream, sshCommand.InputStream, Logger);
+                lock (this)
+                {
+                    _sshClient = sshClient;
+                    _sshCommand = sshCommand;
+                }
             }
             catch (SshAuthenticationException ex)
             {

@@ -433,7 +433,7 @@ namespace DevSync
             }
 
             NotifyHasWork();
-            _sentReporter.Report(_applyRequest.Changes, _changesSize);
+            _sentReporter.Report(_applyRequest.Changes, totalSize);
 
             return !hasErrors;
         }
