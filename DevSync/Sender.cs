@@ -117,16 +117,56 @@ namespace DevSync
         {
             var sw = Stopwatch.StartNew();
             Dictionary<string, FsEntry> srcList = null;
-            var task = Task.Run(() =>
+            Dictionary<string, FsEntry> destList;
+            /*
+             * Start agent before scan source
+             *
+             * Old timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
+             *               [Secondary thread]  Scan source ................................. Finish
+             *
+             * New timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
+             *               [Secondary thread]            Scan source ....................... Finish
+             *
+             * A failed start could cause unnecessary scanning source in old timeline.
+             * No need to scan source before start in most cases because it is about as fast as the scan destination.
+             */
+            _agentStarter.Start();
+
+            using (var tokenSource = new CancellationTokenSource())
             {
-                var scanDirectory = new ScanDirectory(_logger, _excludeList);
-                srcList = scanDirectory.ScanPath(_srcPath).ToDictionary(x => x.Path, y => y);
-                _logger.Log($"Scanned local {srcList.Count} items in {sw.ElapsedMilliseconds} ms");
-            });
-            var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
-            var destList = response.FileList.ToDictionary(x => x.Path, y => y);
-            _logger.Log($"Scanned remote {destList.Count} items in {sw.ElapsedMilliseconds} ms");
-            task.Wait();
+                var cancellationToken = tokenSource.Token;
+
+                // scan source
+                var task = Task.Run(() =>
+                {
+                    try
+                    {
+                        var scanDirectory =
+                            new ScanDirectory(_logger, _excludeList, cancellationToken: cancellationToken);
+                        srcList = scanDirectory.ScanPath(_srcPath).ToDictionary(x => x.Path, y => y);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        _logger.Log($"Scanned source {srcList.Count} items in {sw.ElapsedMilliseconds} ms");
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        srcList = null;
+                    }
+                }, cancellationToken);
+
+                try
+                {
+                    // scan destination
+                    var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
+                    destList = response.FileList.ToDictionary(x => x.Path, y => y);
+                    _logger.Log($"Scanned destination {destList.Count} items in {sw.ElapsedMilliseconds} ms");
+                    task.Wait(cancellationToken);
+                }
+                catch (Exception)
+                {
+                    tokenSource.Cancel();
+                    throw;
+                }
+            }
 
             int itemsCount = 0;
             foreach (var srcEntry in srcList.Values)
@@ -155,12 +195,13 @@ namespace DevSync
             foreach (var destEntry in destList.Values)
             {
                 itemsCount++;
-                AddChange(new FsChange { ChangeType = FsChangeType.Remove, FsEntry = destEntry }, false);
+                AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = destEntry}, false);
             }
 
             _needScan = false;
             NotifyHasWork();
-            _logger.Log($"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
+            _logger.Log(
+                $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
         }
 
         private void AddChange(FsChange fsChange, bool notifyHasWork = true)
@@ -351,8 +392,6 @@ namespace DevSync
 
         private bool SendChanges()
         {
-            var sw = Stopwatch.StartNew();
-
             // fetch changes
             long totalSize = 0;
             lock (_changes)

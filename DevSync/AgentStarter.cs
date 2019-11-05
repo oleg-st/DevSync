@@ -47,6 +47,11 @@ namespace DevSync
 
         public void Start()
         {
+            if (IsStarted)
+            {
+                return;
+            }
+
             try
             {
                 var sw = Stopwatch.StartNew();
@@ -64,6 +69,11 @@ namespace DevSync
 
         protected void Initialize()
         {
+            if (IsInitialized)
+            {
+                return;
+            }
+
             var sw = Stopwatch.StartNew();
             var response = SendCommandInternal<InitResponse>(new InitRequest(Logger)
             {
@@ -103,16 +113,8 @@ namespace DevSync
 
         public T SendCommand<T>(Packet packet) where T : class
         {
-            if (!IsStarted)
-            {
-                Start();
-            }
-
-            if (!IsInitialized)
-            {
-                Initialize();
-            }
-
+            Start();
+            Initialize();
             return SendCommandInternal<T>(packet);
         }
 

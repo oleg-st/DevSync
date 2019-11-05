@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using DevSyncLib;
@@ -17,9 +18,12 @@ namespace DevSync
 
             private readonly Sender _sender;
 
+            private readonly CancellationTokenSource _cancellationTokenSource;
+
             public PathScanner(Sender sender)
             {
                 _sender = sender;
+                _cancellationTokenSource = new CancellationTokenSource();
             }
 
             private bool HasWork
@@ -43,10 +47,18 @@ namespace DevSync
 
             private void AddDirectoryContents(string path)
             {
-                var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList);
-                foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
+                try
                 {
-                    _sender.AddChange(new FsChange { ChangeType = FsChangeType.Change, FsEntry = srcEntry }, false);
+                    var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList,
+                        cancellationToken: _cancellationTokenSource.Token);
+                    foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
+                    {
+                        _sender.AddChange(new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry}, false);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
                 }
                 _sender.NotifyHasWork();
             }
@@ -90,6 +102,7 @@ namespace DevSync
 
             public void Stop()
             {
+                _cancellationTokenSource.Cancel();
                 _needQuit = true;
                 NotifyHasWork();
             }

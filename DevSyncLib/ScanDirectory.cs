@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using DevSyncLib.Logger;
 
 namespace DevSyncLib
@@ -10,12 +11,14 @@ namespace DevSyncLib
         private readonly FileMaskList _excludeList;
         private readonly ILogger _logger;
         private readonly bool _withInfo;
+        private readonly CancellationToken? _cancellationToken;
 
-        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withInfo = true)
+        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withInfo = true, CancellationToken? cancellationToken = null)
         {
             _logger = logger;
             _excludeList = excludeList;
             _withInfo = withInfo;
+            _cancellationToken = cancellationToken;
         }
 
         public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "")
@@ -40,6 +43,8 @@ namespace DevSyncLib
             {
                 foreach (var fsInfo in fileSystemInfos)
                 {
+                    _cancellationToken?.ThrowIfCancellationRequested();
+
                     var path = Path.Combine(relativePath, fsInfo.Name);
                     FsEntry fsEntry = FsEntry.Empty;
 
