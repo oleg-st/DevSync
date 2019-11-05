@@ -10,7 +10,7 @@ namespace DevSync
     {
         public class PathScanner
         {
-            private bool _needQuit;
+            private bool _needToQuit;
 
             private readonly object _syncHasWork = new object();
 
@@ -32,7 +32,7 @@ namespace DevSync
                 {
                     lock (_pathsToScan)
                     {
-                        return _needQuit || _pathsToScan.Count > 0;
+                        return _needToQuit || _pathsToScan.Count > 0;
                     }
                 }
             }
@@ -93,7 +93,7 @@ namespace DevSync
 
             public void Run()
             {
-                while (!_needQuit)
+                while (!_needToQuit)
                 {
                     DoWork();
                     WaitForWork();
@@ -103,7 +103,7 @@ namespace DevSync
             public void Stop()
             {
                 _cancellationTokenSource.Cancel();
-                _needQuit = true;
+                _needToQuit = true;
                 NotifyHasWork();
             }
 

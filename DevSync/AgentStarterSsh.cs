@@ -17,6 +17,7 @@ namespace DevSync
         private SshCommand _sshCommand;
 
         private string _host, _username, _keyFilePath;
+
         public string Host
         {
             get => _host;
@@ -212,9 +213,10 @@ namespace DevSync
                  */
                 var sshCommand =
                     sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {deployPath}/DevSyncAgent.dll");
+
                 sshCommand.BeginExecute(ar =>
                 {
-                    Logger.Log($"Agent died with exit code {sshCommand.ExitStatus}", LogLevel.Error);
+                    SetAgentExitCode(sshCommand.ExitStatus);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 });
@@ -229,6 +231,27 @@ namespace DevSync
             catch (SshAuthenticationException ex)
             {
                 throw new SyncException(ex.Message);
+            }
+        }
+
+        protected override void ProcessAgentExitCode()
+        {
+            // exit code is byte on some platforms
+            var byteAgentExitCode = (byte)AgentExitCode;
+            if (byteAgentExitCode == AgentCommandNotFoundCode)
+            {
+                throw new SyncException(".NET Core 3.0 runtime is not installed on destination");
+            }
+
+            if (byteAgentExitCode == AgentDevSyncNotFoundCode)
+            {
+                if (DeployAgent)
+                {
+                    throw new SyncException("DevSync agent is not installed on destination");
+                }
+
+                DeployAgent = true;
+                throw new SyncException("DevSync agent is not installed on destination. Will try to deploy agent", true, false);
             }
         }
 

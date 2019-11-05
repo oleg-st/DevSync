@@ -48,7 +48,7 @@ namespace DevSyncLib.Command
 
             if (command is ErrorResponse errorResponse)
             {
-                throw new SyncException("Agent responded error: " + errorResponse.Message, errorResponse.Recoverable);
+                throw new SyncException("Agent responded error: " + errorResponse.Message, errorResponse.Recoverable, errorResponse.NeedToWait);
             }
 
             return command;

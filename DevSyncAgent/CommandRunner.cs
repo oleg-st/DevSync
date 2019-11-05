@@ -39,7 +39,7 @@ namespace DevSyncAgent
             }
             catch (SyncException ex)
             {
-                return new ErrorResponse(_logger) { Message = ex.Message, Recoverable = ex.Recoverable };
+                return new ErrorResponse(_logger) { Message = ex.Message, Recoverable = ex.Recoverable, NeedToWait = ex.NeedToWait};
             }
             catch (Exception ex)
             {

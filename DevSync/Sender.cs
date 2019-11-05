@@ -15,8 +15,8 @@ namespace DevSync
     public partial class Sender : IDisposable
     {
         private readonly ILogger _logger;
-        private bool _needScan;
-        private volatile bool _needQuit;
+        private bool _needToScan;
+        private volatile bool _needToQuit;
         private bool _gitIsBusy;
         private FileSystemWatcher _fileSystemWatcher;
 
@@ -103,7 +103,7 @@ namespace DevSync
 
             _changes = new Dictionary<string, FsChange>();
             _changesSize = 0;
-            _needScan = true;
+            _needToScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
             _applyRequest = new ApplyRequest(_logger)
@@ -198,7 +198,7 @@ namespace DevSync
                 AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = destEntry}, false);
             }
 
-            _needScan = false;
+            _needToScan = false;
             NotifyHasWork();
             _logger.Log(
                 $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
@@ -317,7 +317,7 @@ namespace DevSync
             }
         }
 
-        private bool HasWork => _needQuit || _needScan || HasChanges;
+        private bool HasWork => _needToQuit || _needToScan || HasChanges;
         private void SetGitIsBusy(bool value)
         {
             _gitIsBusy = value;
@@ -493,26 +493,26 @@ namespace DevSync
 
             Task.Factory.StartNew(_pathScanner.Run, TaskCreationOptions.LongRunning);
 
-            while (!_needQuit)
+            while (!_needToQuit)
             {
-                var hasErrors = false;
+                var needToWait = false;
                 try
                 {
 
                     // scan
-                    if (_needScan)
+                    if (_needToScan)
                     {
                         Scan();
                     }
 
                     if (!SendChanges())
                     {
-                        hasErrors = true;
+                        needToWait = true;
                     }
                 }
                 catch (SyncException ex)
                 {
-                    if (_needQuit)
+                    if (_needToQuit)
                     {
                         break;
                     }
@@ -521,29 +521,30 @@ namespace DevSync
                     {
                         break;
                     }
-                    hasErrors = true;
+                    needToWait = ex.NeedToWait;
                 }
                 catch (Exception ex)
                 {
-                    if (_needQuit)
+                    if (_needToQuit)
                     {
                         break;
                     }
 
                     _logger.Log(ex.Message, LogLevel.Error);
-                    hasErrors = true;
+                    needToWait = true;
                 }
 
-                if (_needQuit)
+                if (_needToQuit)
                 {
                     break;
                 }
 
-                if (hasErrors)
+                if (needToWait)
                 {
-                    _logger.Log("Waiting");
-                    // TODO: dynamic delay?
-                    Thread.Sleep(1000);
+                    const int intervalMs = 1000;
+                    _logger.Log($"Waiting for {intervalMs} ms");
+                    // TODO: dynamic interval?
+                    Thread.Sleep(intervalMs);
                 }
 
                 WaitForWork();
@@ -553,7 +554,7 @@ namespace DevSync
         private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
         {
             _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);
-            _needScan = true;
+            _needToScan = true;
             _pathScanner.Clear();
             lock (_changes)
             {
@@ -565,7 +566,7 @@ namespace DevSync
 
         private void Stop()
         {
-            _needQuit = true;
+            _needToQuit = true;
             _agentStarter.Stop();
             _pathScanner.Stop();
             NotifyHasWork();
