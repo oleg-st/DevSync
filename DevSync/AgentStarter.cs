@@ -22,17 +22,6 @@ namespace DevSync
 
         protected int AgentExitCode { get; set; }
 
-        // http://www.tldp.org/LDP/abs/html/exitcodes.html
-        protected const byte AgentCommandNotFoundCode = 127;
-        /*
-         * Occurs when DevSync agent is not found (tested on linux)
-         *
-         * LibHostSdkFindFailure described here:
-         * https://github.com/dotnet/core-setup/blob/master/src/corehost/error_codes.h
-         * https://github.com/dotnet/core-setup/blob/master/Documentation/design-docs/host-error-codes.md
-         */
-        protected const byte AgentDevSyncNotFoundCode = 0x91;
-
         protected AgentStarter(ILogger logger)
         {
             Logger = logger;
@@ -68,7 +57,7 @@ namespace DevSync
             try
             {
                 var sw = Stopwatch.StartNew();
-                SetAgentExitCode(0);
+                SetAgentExitCode(0, null);
                 DoStart();
                 IsStarted = true;
                 IsInitialized = false;
@@ -169,14 +158,14 @@ namespace DevSync
             return agentStarter;
         }
 
-        protected void SetAgentExitCode(int exitCode)
+        protected void SetAgentExitCode(int exitCode, string errorMessage)
         {
             AgentExitCode = exitCode;
-            if (exitCode == 0)
+            if (exitCode == 0 && string.IsNullOrWhiteSpace(errorMessage))
             {
                 return;
             }
-            Logger.Log($"Agent died with exit code {exitCode}", LogLevel.Error);
+            Logger.Log($"Agent died with exit code {exitCode}{(!string.IsNullOrWhiteSpace(errorMessage) ? $": {errorMessage.Trim()}" : "")}", LogLevel.Error);
         }
 
         public void Stop()

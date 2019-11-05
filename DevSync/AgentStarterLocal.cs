@@ -21,7 +21,9 @@ namespace DevSync
             PacketStream = new PacketStream(_command.StandardOutput.BaseStream, _command.StandardInput.BaseStream, Logger);
             _command.Task.ContinueWith(r =>
             {
-                SetAgentExitCode(r.Result.ExitCode);
+                SetAgentExitCode(r.Result.ExitCode, r.Result.StandardError);
+                Cleanup();
+                IsStarted = false;
             });
         }
 

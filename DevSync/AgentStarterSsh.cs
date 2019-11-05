@@ -53,6 +53,34 @@ namespace DevSync
 
         private PrivateKeyFile _privateKeyFile;
 
+        /**
+         * Occurs when shell cannot find dotnet command
+         *
+         * Command not found:
+         * http://www.tldp.org/LDP/abs/html/exitcodes.html
+         */
+        protected const byte CommandNotFoundCode = 127;
+
+        /*
+         * Occurs when DevSync agent is not found and .NET Core SDK is installed.
+         */
+        protected const byte NotFoundDotnet = 1;
+
+        /*
+         * Occurs when DevSync agent is not found and .NET Core SDK is not installed.
+         *
+         * LibHostSdkFindFailure:
+         * https://github.com/dotnet/core-setup/blob/master/Documentation/design-docs/host-error-codes.md
+         */
+        protected const byte LibHostSdkFindFailure = 0x91;
+
+        /**
+         * Occurs when DevSync agent dependencies is not found.
+         * ResolverResolveFailure:
+         * https://github.com/dotnet/core-setup/blob/master/Documentation/design-docs/host-error-codes.md
+         */
+        protected const byte ResolverResolveFailure = 0x8c;
+
         protected override void Cleanup()
         {
             base.Cleanup();
@@ -216,7 +244,7 @@ namespace DevSync
 
                 sshCommand.BeginExecute(ar =>
                 {
-                    SetAgentExitCode(sshCommand.ExitStatus);
+                    SetAgentExitCode(sshCommand.ExitStatus, sshCommand.Error);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 });
@@ -238,12 +266,12 @@ namespace DevSync
         {
             // exit code is byte on some platforms
             var byteAgentExitCode = (byte)AgentExitCode;
-            if (byteAgentExitCode == AgentCommandNotFoundCode)
+            if (byteAgentExitCode == CommandNotFoundCode)
             {
                 throw new SyncException(".NET Core 3.0 runtime is not installed on destination");
             }
 
-            if (byteAgentExitCode == AgentDevSyncNotFoundCode)
+            if (byteAgentExitCode == LibHostSdkFindFailure || byteAgentExitCode == ResolverResolveFailure || byteAgentExitCode == NotFoundDotnet)
             {
                 if (DeployAgent)
                 {
