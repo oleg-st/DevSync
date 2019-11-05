@@ -85,7 +85,7 @@ namespace DevSyncLib.Command
                 ChangeType = changeType,
                 FsEntry = ReadFsEntry()
             };
-            fsChange.OldFsEntry = fsChange.ChangeType == FsChangeType.Rename ? ReadFsEntry() : FsEntry.Empty;
+            fsChange.OldPath = fsChange.ChangeType == FsChangeType.Rename ? ReadString() : string.Empty;
             return fsChange;
         }
 

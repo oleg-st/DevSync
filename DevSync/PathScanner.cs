@@ -50,10 +50,10 @@ namespace DevSync
                 try
                 {
                     var scanDirectory = new ScanDirectory(_sender._logger, _sender._excludeList,
-                        cancellationToken: _cancellationTokenSource.Token);
+                        false, _cancellationTokenSource.Token);
                     foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                     {
-                        _sender.AddChange(new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry}, false);
+                        _sender.AddChangeForPath(srcEntry.Path, false);
                     }
                 }
                 catch (OperationCanceledException)

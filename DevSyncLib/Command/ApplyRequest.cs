@@ -172,11 +172,11 @@ namespace DevSyncLib.Command
                     {
                         if (fsChange.FsEntry.IsDirectory)
                         {
-                            Directory.Move(Path.Combine(BasePath, fsChange.OldFsEntry.Path), path);
+                            Directory.Move(Path.Combine(BasePath, fsChange.OldPath), path);
                         }
                         else
                         {
-                            File.Move(Path.Combine(BasePath, fsChange.OldFsEntry.Path), path, true);
+                            File.Move(Path.Combine(BasePath, fsChange.OldPath), path, true);
                         }
 
                         resultCode = FsChangeResultCode.Ok;
@@ -231,7 +231,7 @@ namespace DevSyncLib.Command
                     }
                 }
 
-                // TODO: skip ok codes (sender do not use them for now)
+                // TODO: skip ok codes (sender do not use them at the moment)
                 if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
                 {
                     yield return fsChangeResult;

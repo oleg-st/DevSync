@@ -73,7 +73,7 @@ namespace DevSyncLib.Command
             WriteFsEntry(fsChange.FsEntry);
             if (fsChange.ChangeType == FsChangeType.Rename)
             {
-                WriteFsEntry(fsChange.OldFsEntry);
+                WriteString(fsChange.OldPath);
             }
         }
 

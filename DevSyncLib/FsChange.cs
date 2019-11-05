@@ -7,7 +7,7 @@ namespace DevSyncLib
     {
         public FsChangeType ChangeType;
         public FsEntry FsEntry;
-        public FsEntry OldFsEntry;
+        public string OldPath;
         public long BodySize => HasBody ? FsEntry.Length : 0;
         public bool HasBody => ChangeType == FsChangeType.Change && FsEntry.Length > 0;
         // change is expired -> ignore it
@@ -19,7 +19,7 @@ namespace DevSyncLib
 
         public override string ToString()
         {
-            return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldFsEntry.Path} -> " : "")}{FsEntry.Path}{(ChangeType == FsChangeType.Change && FsEntry.Length >= 0 ? $", {FsEntry.Length}" : "")}";
+            return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldPath} -> " : "")}{FsEntry.Path}{(ChangeType == FsChangeType.Change && FsEntry.Length >= 0 ? $", {FsEntry.Length}" : "")}";
         }
         
         public static FsChange FromFilename(string fullname, string path)
@@ -28,31 +28,20 @@ namespace DevSyncLib
             {
                 FsEntry = new FsEntry { Path = path }
             };
-
-            // file
             var fileInfo = new FileInfo(fullname);
-            if (fileInfo.Exists)
+            var attributes = fileInfo.Attributes;
+            // exists?
+            if (attributes != (FileAttributes)(-1))
             { 
                 fsChange.ChangeType = FsChangeType.Change;
                 fsChange.FsEntry.LastWriteTime = fileInfo.LastWriteTime;
-                fsChange.FsEntry.Length = fileInfo.Length;
+                fsChange.FsEntry.Length = (attributes & FileAttributes.Directory) != 0 ? -1 : fileInfo.Length;
             } else 
-            { // directory
-                var directoryInfo = new DirectoryInfo(fullname);
-                if (directoryInfo.Exists)
-                {
-                    fsChange.ChangeType = FsChangeType.Change;
-                    fsChange.FsEntry.LastWriteTime = directoryInfo.LastWriteTime;
-                    fsChange.FsEntry.Length = -1;
-                }
-                // remove
-                else
-                {
-                    fsChange.ChangeType = FsChangeType.Remove;
-                    // dummy
-                    fsChange.FsEntry.Length = 0;
-                    fsChange.FsEntry.LastWriteTime = DateTime.UnixEpoch;
-                }
+            {
+                fsChange.ChangeType = FsChangeType.Remove;
+                // dummy
+                fsChange.FsEntry.Length = 0;
+                fsChange.FsEntry.LastWriteTime = DateTime.UnixEpoch;
             }
             return fsChange;
         }

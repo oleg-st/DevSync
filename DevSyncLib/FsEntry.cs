@@ -36,7 +36,7 @@ namespace DevSyncLib
                 LastWriteTime = withInfo ? fsInfo.LastWriteTime : DateTime.MinValue,
                 Path = NormalizePath(path),
                 Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 : 
-                    (fsInfo.Attributes & FileAttributes.Directory) != 0 ? - 1 : 0
+                    fsInfo is FileInfo ? 0 : -1
             };
         }
     }

@@ -27,11 +27,16 @@ namespace DevSyncLib
             try
             {
                 var fullPath = Path.Combine(basePath, relativePath);
-
-                if (Directory.Exists(fullPath))
+                var directoryInfo = new DirectoryInfo(fullPath);
+                if (directoryInfo.Exists)
                 {
-                    var directoryInfo = new DirectoryInfo(fullPath);
-                    fileSystemInfos = directoryInfo.EnumerateFileSystemInfos();
+                    fileSystemInfos = directoryInfo.EnumerateFileSystemInfos("*", new EnumerationOptions
+                    {
+                        ReturnSpecialDirectories = false,
+                        // Skip symlinks
+                        AttributesToSkip = FileAttributes.ReparsePoint,
+                        IgnoreInaccessible = false,
+                    });
                 }
             }
             catch (Exception ex)
@@ -46,14 +51,13 @@ namespace DevSyncLib
                     _cancellationToken?.ThrowIfCancellationRequested();
 
                     var path = Path.Combine(relativePath, fsInfo.Name);
-                    FsEntry fsEntry = FsEntry.Empty;
+                    var fsEntry = FsEntry.Empty;
 
-                    // skip symlinks and excludes
-                    if ((fsInfo.Attributes & FileAttributes.ReparsePoint) == 0 &&
-                        !_excludeList.IsMatch(FsEntry.NormalizePath(path)))
+                    // skip excludes
+                    if (!_excludeList.IsMatch(FsEntry.NormalizePath(path)))
                     {
                         // scan children
-                        if ((fsInfo.Attributes & FileAttributes.Directory) != 0)
+                        if (fsInfo is DirectoryInfo)
                         {
                             foreach (var entry in ScanPath(basePath, path))
                             {

@@ -116,7 +116,7 @@ namespace DevSync
         private void Scan()
         {
             var sw = Stopwatch.StartNew();
-            Dictionary<string, FsEntry> srcList = null;
+            List<FsEntry> srcList = null;
             Dictionary<string, FsEntry> destList;
             /*
              * Start agent before scan source
@@ -141,11 +141,12 @@ namespace DevSync
                 {
                     try
                     {
+                        var swScanSource = Stopwatch.StartNew();
                         var scanDirectory =
                             new ScanDirectory(_logger, _excludeList, cancellationToken: cancellationToken);
-                        srcList = scanDirectory.ScanPath(_srcPath).ToDictionary(x => x.Path, y => y);
+                        srcList = scanDirectory.ScanPath(_srcPath).ToList();
                         cancellationToken.ThrowIfCancellationRequested();
-                        _logger.Log($"Scanned source {srcList.Count} items in {sw.ElapsedMilliseconds} ms");
+                        _logger.Log($"Scanned source {srcList.Count} items in {swScanSource.ElapsedMilliseconds} ms");
                     }
                     catch (OperationCanceledException)
                     {
@@ -155,10 +156,11 @@ namespace DevSync
 
                 try
                 {
+                    var swScanDestination = Stopwatch.StartNew();
                     // scan destination
                     var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
                     destList = response.FileList.ToDictionary(x => x.Path, y => y);
-                    _logger.Log($"Scanned destination {destList.Count} items in {sw.ElapsedMilliseconds} ms");
+                    _logger.Log($"Scanned destination {destList.Count} items in {swScanDestination.ElapsedMilliseconds} ms");
                     task.Wait(cancellationToken);
                 }
                 catch (Exception)
@@ -168,34 +170,45 @@ namespace DevSync
                 }
             }
 
-            int itemsCount = 0;
-            foreach (var srcEntry in srcList.Values)
+            // During scan, changes could come from file system events or from PathScanner, we should not overwrite them.
+            var itemsCount = 0;
+            lock (_changes)
             {
-                if (!destList.TryGetValue(srcEntry.Path, out var destEntry))
+                foreach (var srcEntry in srcList)
                 {
-                    destEntry = FsEntry.Empty;
+                    if (!destList.TryGetValue(srcEntry.Path, out var destEntry))
+                    {
+                        destEntry = FsEntry.Empty;
+                    }
+
+                    // Skip changed srcEntry
+                    if (!_changes.ContainsKey(srcEntry.Path))
+                    {
+                        // add to changes (no replace)
+                        if (!srcEntry.Compare(destEntry))
+                        {
+                            var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
+                            itemsCount++;
+                            AddChange(fsChange, false);
+                        }
+                    }
+
+                    if (!destEntry.IsEmpty)
+                    {
+                        destList.Remove(destEntry.Path);
+                    }
                 }
 
-                // add to changes
-                if (!srcEntry.Compare(destEntry))
+                // add deletes
+                foreach (var destEntry in destList.Values)
                 {
-                    var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
-                    itemsCount++;
-                    AddChange(fsChange, false);
+                    // Skip changed destEntry
+                    if (!_changes.ContainsKey(destEntry.Path))
+                    {
+                        itemsCount++;
+                        AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = destEntry}, false);
+                    }
                 }
-
-                // remove from dest list
-                if (!destEntry.IsEmpty)
-                {
-                    destList.Remove(destEntry.Path);
-                }
-            }
-
-            // delete
-            foreach (var destEntry in destList.Values)
-            {
-                itemsCount++;
-                AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = destEntry}, false);
             }
 
             _needToScan = false;
@@ -204,7 +217,28 @@ namespace DevSync
                 $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
         }
 
-        private void AddChange(FsChange fsChange, bool notifyHasWork = true)
+        private FsChange GetChangeFromPath(string path)
+        {
+            return FsChange.FromFilename(Path.Combine(_srcPath, path), path);
+        }
+
+        // Safe way to add change (FsChange is created in realtime)
+        private void AddChangeForPath(string path, bool notifyHasWork = true, bool withSubdirectories = false)
+        {
+            AddChange(GetChangeFromPath(path), notifyHasWork, withSubdirectories);
+        }
+
+        // Safe way to add rename change (FsChange is created in realtime)
+        private void AddChangeForPathAndOldPath(string path, string oldPath, bool notifyHasWork = true, bool withSubdirectories = false)
+        {
+            var fsChange = GetChangeFromPath(path);
+            fsChange.ChangeType = FsChangeType.Rename;
+            fsChange.OldPath = oldPath;
+            AddChange(fsChange, notifyHasWork, withSubdirectories);
+        }
+
+        // Please do not pass stale FsChange
+        private void AddChange(FsChange fsChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
             lock (_changes)
             {
@@ -216,6 +250,11 @@ namespace DevSync
 
                 _changes[fsChange.Key] = fsChange;
                 _changesSize += fsChange.BodySize;
+            }
+
+            if (withSubdirectories && fsChange.FsEntry.IsDirectory)
+            {
+                _pathScanner.Add(fsChange.FsEntry.Path);
             }
 
             if (notifyHasWork)
@@ -241,14 +280,7 @@ namespace DevSync
             {
                 return;
             }
-
-            var fsChange = FsChange.FromFilename(e.FullPath, path);
-            AddChange(fsChange);
-            // scan new directory
-            if (e.ChangeType == WatcherChangeTypes.Created && fsChange.FsEntry.IsDirectory)
-            {
-                _pathScanner.Add(fsChange.FsEntry.Path);
-            }
+            AddChangeForPath(path, withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
         }
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
@@ -264,7 +296,7 @@ namespace DevSync
                 return;
             }
 
-            AddChange(FsChange.FromFilename(e.FullPath, path));
+            AddChangeForPath(path);
         }
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
@@ -282,26 +314,22 @@ namespace DevSync
                 // old file is not excluded -> delete it
                 if (!_excludeList.IsMatch(oldPath))
                 {
-                    AddChange(FsChange.FromFilename(e.OldFullPath, oldPath));
+                    AddChangeForPath(oldPath);
                 }
 
                 // both files are excluded -> do nothing
             }
             else // new file is not excluded
             {
-                // old file is excluded -> send new file
+                // old file is excluded -> send change with withSubdirectories
                 if (_excludeList.IsMatch(oldPath))
                 {                    
-                    AddChange(FsChange.FromFilename(e.FullPath, path));
+                    AddChangeForPath(path, withSubdirectories: true);
                 }
                 else
                 {
-                    // both files are excluded -> send rename
-                    var fsChange = FsChange.FromFilename(e.FullPath, path);
-                    var oldFsChange = FsChange.FromFilename(e.OldFullPath, oldPath);
-                    fsChange.ChangeType = FsChangeType.Rename;
-                    fsChange.OldFsEntry = oldFsChange.FsEntry;
-                    AddChange(fsChange);
+                    // both files are not excluded -> send rename
+                    AddChangeForPathAndOldPath(path, oldPath);
                 }
             }
         }
@@ -410,6 +438,7 @@ namespace DevSync
                         break;
                     }
 
+                    //_fileLogger.Log($"Sending change {fsChange}");
                     _applyRequest.Changes.Add(fsChange);
                     itemsCount++;
                     totalSize += fsChange.BodySize;
@@ -433,18 +462,14 @@ namespace DevSync
                         {
                             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
                             {
+                                var withSubdirectories = false;
                                 // ignore sender errors: just resend
                                 if (fsChangeResult.ResultCode != FsChangeResultCode.SenderError)
                                 {
-                                    // if rename failed -> send entire file
+                                    // if rename failed -> send change with withSubdirectories
                                     if (fsChange.ChangeType == FsChangeType.Rename)
                                     {
-                                        fsChange.ChangeType = FsChangeType.Change;
-                                        // scan if directory
-                                        if (fsChange.FsEntry.IsDirectory)
-                                        {
-                                            _pathScanner.Add(fsChange.FsEntry.Path);
-                                        }
+                                        withSubdirectories = true;
                                     }
                                     else
                                     {
@@ -453,9 +478,7 @@ namespace DevSync
                                             $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
                                     }
                                 }
-                                // resend
-                                _changes.Add(fsChange.Key, fsChange);
-                                _changesSize += fsChange.BodySize;
+                                AddChangeForPath(fsChange.FsEntry.Path, false, withSubdirectories);
                             }
                         }
                     }
