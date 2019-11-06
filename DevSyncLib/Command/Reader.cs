@@ -184,6 +184,17 @@ namespace DevSyncLib.Command
                     fs.StreamChmod(0b111_101_101);
                 }
 
+                // create empty file
+                if (bodyReadSuccess && fsChange.FsEntry.Length == 0)
+                {
+                    var directoryName = Path.GetDirectoryName(path);
+                    Directory.CreateDirectory(directoryName);
+                    using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    {
+                    }
+                    File.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
+                }
+
                 return bodyReadSuccess;
             }
             catch (Exception)

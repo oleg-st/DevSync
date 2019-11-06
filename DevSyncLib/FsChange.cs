@@ -9,7 +9,7 @@ namespace DevSyncLib
         public FsEntry FsEntry;
         public string OldPath;
         public long BodySize => HasBody ? FsEntry.Length : 0;
-        public bool HasBody => ChangeType == FsChangeType.Change && FsEntry.Length > 0;
+        public bool HasBody => ChangeType == FsChangeType.Change && !FsEntry.IsDirectory;
         // change is expired -> ignore it
         public bool Expired;
         public string Key => FsEntry.Path;

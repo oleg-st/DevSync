@@ -45,25 +45,7 @@ namespace DevSyncLib.Command
                 case FsChangeType.Change:
                     try
                     {
-                        bool bodyReadSuccess;
-                        var directoryName = Path.GetDirectoryName(path);
-                        if (fsChange.HasBody)
-                        {
-                            bodyReadSuccess = Reader.ReadFsChangeBody(path, fsChange);
-                        }
-                        else
-                        {
-                            Directory.CreateDirectory(directoryName);
-                            // create empty file
-                            using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
-                            {
-                            }
-
-                            bodyReadSuccess = true;
-                            File.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
-                        }
-
-                        if (bodyReadSuccess)
+                        if (fsChange.HasBody && Reader.ReadFsChangeBody(path, fsChange))
                         {
                             resultCode = FsChangeResultCode.Ok;
                         }
