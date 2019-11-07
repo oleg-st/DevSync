@@ -14,7 +14,8 @@ namespace DevSyncLib.Command
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
-            Compression = new BrotliCompression();
+            // fastest with window 1MB same as chunk size
+            Compression = new BrotliCompression(0, 20);
 
             inputStream = new ChunkReadStream(inputStream, Compression);
             outputStream = new ChunkWriteStream(outputStream, Compression);

@@ -2,12 +2,15 @@
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using DevSync.Cryptography;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using ICSharpCode.SharpZipLib.Tar;
 using Renci.SshNet;
 using Renci.SshNet.Common;
+using Renci.SshNet.Security.Cryptography.Ciphers;
+using Renci.SshNet.Security.Cryptography.Ciphers.Modes;
 
 namespace DevSync
 {
@@ -53,7 +56,7 @@ namespace DevSync
 
         private PrivateKeyFile _privateKeyFile;
 
-        /**
+        /*
          * Occurs when shell cannot find dotnet command
          *
          * Command not found:
@@ -74,7 +77,7 @@ namespace DevSync
          */
         protected const byte LibHostSdkFindFailure = 0x91;
 
-        /**
+        /*
          * Occurs when DevSync agent dependencies is not found.
          * ResolverResolveFailure:
          * https://github.com/dotnet/core-setup/blob/master/Documentation/design-docs/host-error-codes.md
@@ -92,6 +95,7 @@ namespace DevSync
                 sshClient = _sshClient;
                 sshCommand = _sshCommand;
             }
+
             sshCommand?.Dispose();
             sshClient?.Dispose();
         }
@@ -107,12 +111,14 @@ namespace DevSync
                 sshClient = _sshClient;
                 sshCommand = _sshCommand;
             }
+
             Task.Run(() =>
             {
                 sshCommand?.Dispose();
                 sshClient?.Dispose();
             });
         }
+
         protected void DoDeployAgent(SshClient sshClient, string path)
         {
             var sw = Stopwatch.StartNew();
@@ -180,6 +186,7 @@ namespace DevSync
                     keyPassPhrase = keyPassPhrase.Substring(0, keyPassPhrase.Length - 1);
                 }
             } while (true);
+
             Console.WriteLine();
             Logger.Resume();
             return keyPassPhrase;
@@ -192,8 +199,10 @@ namespace DevSync
 
                 if (!File.Exists(_keyFilePath))
                 {
-                    throw new SyncException($"Your ssh private key is not found: {_keyFilePath}. Use ssh-keygen to create");
+                    throw new SyncException(
+                        $"Your ssh private key is not found: {_keyFilePath}. Use ssh-keygen to create");
                 }
+
                 try
                 {
                     _privateKeyFile = new PrivateKeyFile(_keyFilePath);
@@ -203,7 +212,47 @@ namespace DevSync
                     _privateKeyFile = new PrivateKeyFile(_keyFilePath, GetKeyPassPhrase());
                 }
             }
+
             return _privateKeyFile;
+        }
+
+        private void InitEncryption(ConnectionInfo connectionInfo)
+        {
+            /*
+             * Sorted by performance / strength / OpenSSH preferences
+             *
+             * OpenSSH cipher performance
+             * https://possiblelossofprecision.net/?p=2255
+             * https://security.stackexchange.com/questions/180544/is-there-a-list-of-weak-ssh-ciphers
+             */
+            connectionInfo.Encryptions.Clear();
+            // aes-ctr (partially native with CtrCipherMode, most secure)
+            connectionInfo.Encryptions["aes128-ctr"] =
+                new CipherInfo(128, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+            connectionInfo.Encryptions["aes192-ctr"] =
+                new CipherInfo(192, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+            connectionInfo.Encryptions["aes256-ctr"] =
+                new CipherInfo(256, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+            // aes-cbc (fully native, fastest but less secure)
+            connectionInfo.Encryptions["aes128-cbc"]
+                = new CipherInfo(128, (key, iv) => new NativeAesCipherCbc(key, iv));
+            connectionInfo.Encryptions["aes192-cbc"]
+                = new CipherInfo(192, (key, iv) => new NativeAesCipherCbc(key, iv));
+            connectionInfo.Encryptions["aes256-cbc"]
+                = new CipherInfo(256, (key, iv) => new NativeAesCipherCbc(key, iv));
+            // not recommended
+            connectionInfo.Encryptions["arcfour256"]
+                = new CipherInfo(256, (key, iv) => new Arc4Cipher(key, true));
+            connectionInfo.Encryptions["arcfour"]
+                = new CipherInfo(128, (key, iv) => new Arc4Cipher(key, false));
+            connectionInfo.Encryptions["arcfour128"]
+                = new CipherInfo(128, (key, iv) => new Arc4Cipher(key, true));
+            connectionInfo.Encryptions["blowfish-cbc"]
+                = new CipherInfo(128, (key, iv) => new BlowfishCipher(key, new CbcCipherMode(iv), null));
+            connectionInfo.Encryptions["cast128-cbc"]
+                = new CipherInfo(128, (key, iv) => new CastCipher(key, new CbcCipherMode(iv), null));
+            connectionInfo.Encryptions["3des-cbc"]
+                = new CipherInfo(192, (key, iv) => new NativeTripleDesCipherCbc(key, iv));
         }
 
         public override void DoStart()
@@ -216,8 +265,9 @@ namespace DevSync
                 )
                 {
                     RetryAttempts = int.MaxValue,
-                    Timeout = new TimeSpan(0, 0, 20),
+                    Timeout = new TimeSpan(0, 0, 20)
                 };
+                InitEncryption(connectionInfo);
 
                 var sshClient = new SshClient(connectionInfo);
                 sshClient.Connect();

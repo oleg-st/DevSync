@@ -10,7 +10,6 @@ namespace DevSyncLib.Command
         private readonly Stream _baseStream;
 
         private readonly ICompression _compression;
-
         // max chunk size
         public const int ChunkSize = 1024 * 1024;
         // compress chunk if length is more than

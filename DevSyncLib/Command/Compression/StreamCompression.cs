@@ -22,7 +22,6 @@ namespace DevSyncLib.Command.Compression
             }
 
             written = (int)outputStream.Position;
-
             return true;
         }
 
