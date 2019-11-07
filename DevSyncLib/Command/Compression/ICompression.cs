@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace DevSyncLib.Command.Compression
+﻿namespace DevSyncLib.Command.Compression
 {
     public interface ICompression
     {

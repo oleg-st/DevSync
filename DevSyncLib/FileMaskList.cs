@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace DevSyncLib
@@ -10,27 +10,23 @@ namespace DevSyncLib
         private Regex _regex;
         private readonly List<string> _masks = new List<string>();
 
-        protected string MaskToRegex(string mask)
+        protected StringBuilder MaskToRegex(string mask)
         {
-            var re = Regex.Escape(FsEntry.NormalizePath(mask.Trim()))
+            var re = new StringBuilder(Regex.Escape(FsEntry.NormalizePath(mask)))
                 // *
                 .Replace("\\*", "[^/]*")
                 // ?
                 .Replace("\\?", "[^/]");
 
             // slash in the beginning -> begin of string
-            if (re.StartsWith("/"))
+            re.Insert(0, re[0] == '/' ? '^' : '/');
+
+            // slash after mask
+            if (re[re.Length - 1] != '/')
             {
-                re = '^' + re.Substring(1);
-            }
-            else
-            {
-                // begin of string or slash before mask
-                re = "(^|/)" + re;
+                re.Append('/');
             }
 
-            // end of string or slash after mask
-            re += "($|/)";
             return re;
         }
 
@@ -42,13 +38,25 @@ namespace DevSyncLib
         public bool SetList(List<string> list)
         {
             _masks.Clear();
-            var re = list.Count > 0 ? list.Select(MaskToRegex)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Aggregate((current, next) => current + "|" + next)
-                : null;
+            var combinedRegex = new StringBuilder();
+            foreach (var mask in list)
+            {
+                var trimmedMask = mask.Trim();
+                if (!string.IsNullOrEmpty(trimmedMask))
+                {
+                    var re = MaskToRegex(trimmedMask);
+                    if (combinedRegex.Length > 0)
+                    {
+                        combinedRegex.Append('|');
+                    }
+
+                    combinedRegex.Append(re);
+                }
+            }
+
             try
             {
-                _regex = string.IsNullOrEmpty(re) ? null : new Regex(re, RegexOptions.Compiled);
+                _regex = combinedRegex.Length == 0 ? null : new Regex(combinedRegex.ToString(), RegexOptions.Compiled);
                 _masks.AddRange(list);
                 return true;
             }
@@ -61,7 +69,19 @@ namespace DevSyncLib
 
         public bool IsMatch(string path)
         {
-            return !string.IsNullOrEmpty(path) && _regex != null && _regex.IsMatch(path);
+            if (string.IsNullOrEmpty(path) || _regex == null)
+            {
+                return false;
+            }
+            if (!path.StartsWith('/'))
+            {
+                path = "/" + path;
+            }
+            if (!path.EndsWith('/'))
+            {
+                path += "/";
+            }
+            return _regex.IsMatch(path);
         }
     }
 }

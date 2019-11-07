@@ -23,11 +23,14 @@ namespace DevSyncLib
 
         public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "")
         {
+            return ScanPath(new DirectoryInfo(Path.Combine(basePath, relativePath)), relativePath);
+        }
+
+        public IEnumerable<FsEntry> ScanPath(DirectoryInfo directoryInfo, string relativePath = "")
+        {
             IEnumerable<FileSystemInfo> fileSystemInfos = null;
             try
             {
-                var fullPath = Path.Combine(basePath, relativePath);
-                var directoryInfo = new DirectoryInfo(fullPath);
                 if (directoryInfo.Exists)
                 {
                     fileSystemInfos = directoryInfo.EnumerateFileSystemInfos("*", new EnumerationOptions
@@ -57,9 +60,9 @@ namespace DevSyncLib
                     if (!_excludeList.IsMatch(FsEntry.NormalizePath(path)))
                     {
                         // scan children
-                        if (fsInfo is DirectoryInfo)
+                        if (fsInfo is DirectoryInfo childDirectoryInfo)
                         {
-                            foreach (var entry in ScanPath(basePath, path))
+                            foreach (var entry in ScanPath(childDirectoryInfo, path))
                             {
                                 yield return entry;
                             }
