@@ -47,17 +47,20 @@ namespace DevSync
             private readonly ILogger _logger;
             private string _lastChange;
             private const int REPORT_INTERVAL = 1000;
+            private TimeSpan _timeSpan;
 
             public SentReporter(ILogger logger)
             {
                 _logger = logger;
                 _stopwatch = new Stopwatch();
+                _timeSpan = TimeSpan.Zero;
             }
 
-            public void Report(List<FsChange> changes, long size)
+            public void Report(List<FsChange> changes, long size, TimeSpan timeSpan)
             {
                 _totalCount += changes.Count;
                 _totalSize += size;
+                _timeSpan += timeSpan;
                 if (_totalCount == 1 && changes.Count == 1)
                 {
                     _lastChange =  changes.First().ToString();
@@ -77,11 +80,12 @@ namespace DevSync
 
                 _logger.Log(_totalCount == 1
                     ? _lastChange
-                    : $"Sent {_totalCount} changes, {PrettySize(_totalSize)}");
+                    : $"Sent {_totalCount} changes, {PrettySize(_totalSize)} in {(int)_timeSpan.TotalMilliseconds} ms");
 
                 _lastChange = "";
                 _totalCount = 0;
                 _totalSize = 0;
+                _timeSpan = TimeSpan.Zero;
                 _stopwatch.Restart();
             }
         }
@@ -438,13 +442,13 @@ namespace DevSync
                         break;
                     }
 
-                    //_fileLogger.Log($"Sending change {fsChange}");
                     _applyRequest.Changes.Add(fsChange);
                     itemsCount++;
                     totalSize += fsChange.BodySize;
                 }
             }
 
+            var sw = Stopwatch.StartNew();
             var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
 
@@ -495,7 +499,7 @@ namespace DevSync
             }
 
             NotifyHasWork();
-            _sentReporter.Report(_applyRequest.Changes, totalSize);
+            _sentReporter.Report(_applyRequest.Changes, totalSize, sw.Elapsed);
 
             return !hasErrors;
         }
