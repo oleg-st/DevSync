@@ -26,6 +26,9 @@ namespace DevSync
             [Option("deploy", Default = false, HelpText = "Deploy agent to ~/.devsync")]
             public bool DeployAgent { get; set; }
 
+            [Option("external-ssh", Default = false, HelpText = "Use external ssh command")]
+            public bool ExternalSsh { get; set; }
+
             [Option("realsync", Default = null, HelpText = "Realsync source directory (with .realsync file)")]
             public string RealsyncPath { get; set; }
 
@@ -82,6 +85,7 @@ namespace DevSync
             }
 
             syncOptions.DeployAgent = options.DeployAgent;
+            syncOptions.ExternalSsh = options.ExternalSsh;
             return syncOptions;
         }
 

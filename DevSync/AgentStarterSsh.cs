@@ -6,7 +6,6 @@ using DevSync.Cryptography;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
-using ICSharpCode.SharpZipLib.Tar;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using Renci.SshNet.Security.Cryptography.Ciphers;
@@ -122,43 +121,19 @@ namespace DevSync
         protected void DoDeployAgent(SshClient sshClient, string path)
         {
             var sw = Stopwatch.StartNew();
-            var files = new[]
+            var tarBytes = CreateTarForAgent();
+            using var sshCommand = sshClient.CreateCommand($"mkdir -p {path} && tar xf - -C {path}");
+            var asyncResult = sshCommand.BeginExecute();
+            using (sshCommand.InputStream)
             {
-                "DevSyncAgent.dll",
-                "DevSyncAgent.deps.json",
-                "DevSyncAgent.runtimeconfig.json",
-                "DevSyncLib.dll",
-                "DevSyncLib.deps.json"
-            };
+                sshCommand.InputStream.Write(tarBytes);
+            }
 
-            using (var memoryStream = new MemoryStream())
+            sshCommand.EndExecute(asyncResult);
+            if (sshCommand.ExitStatus != 0)
             {
-                using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
-                {
-                    var assemblyPath = Path.GetDirectoryName(typeof(PacketStream).Assembly.Location);
-
-                    foreach (var filename in files)
-                    {
-                        var tarEntry = TarEntry.CreateEntryFromFile(Path.Combine(assemblyPath, filename));
-                        tarEntry.Name = Path.GetFileName(filename);
-                        tarArchive.WriteEntry(tarEntry, true);
-                    }
-                }
-
-                var tarBytes = memoryStream.ToArray();
-                using var sshCommand = sshClient.CreateCommand($"mkdir -p {path} && tar xf - -C {path}");
-                var asyncResult = sshCommand.BeginExecute();
-                using (sshCommand.InputStream)
-                {
-                    sshCommand.InputStream.Write(tarBytes);
-                }
-
-                sshCommand.EndExecute(asyncResult);
-                if (sshCommand.ExitStatus != 0)
-                {
-                    throw new SyncException(
-                        $"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
-                }
+                throw new SyncException(
+                    $"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
             }
 
             Logger.Log($"Deployed agent in {sw.ElapsedMilliseconds} ms");
@@ -228,11 +203,11 @@ namespace DevSync
             connectionInfo.Encryptions.Clear();
             // aes-ctr (partially native with CtrCipherMode, most secure)
             connectionInfo.Encryptions["aes128-ctr"] =
-                new CipherInfo(128, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+                new CipherInfo(128, (key, iv) => new NativeAesCipherCtr(key, iv));
             connectionInfo.Encryptions["aes192-ctr"] =
-                new CipherInfo(192, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+                new CipherInfo(192, (key, iv) => new NativeAesCipherCtr(key, iv));
             connectionInfo.Encryptions["aes256-ctr"] =
-                new CipherInfo(256, (key, iv) => new NativeAesCipher(key, new CtrCipherMode(iv)));
+                new CipherInfo(256, (key, iv) => new NativeAesCipherCtr(key, iv));
             // aes-cbc (fully native, fastest but less secure)
             connectionInfo.Encryptions["aes128-cbc"]
                 = new CipherInfo(128, (key, iv) => new NativeAesCipherCbc(key, iv));
@@ -278,11 +253,9 @@ namespace DevSync
                     CleanupDeferred();
                 };
 
-                // TODO: path
-                var deployPath = ".devsync";
                 if (DeployAgent)
                 {
-                    DoDeployAgent(sshClient, deployPath);
+                    DoDeployAgent(sshClient, DeployPath);
                 }
 
                 /*
@@ -290,7 +263,7 @@ namespace DevSync
                  * https://github.com/dotnet/coreclr/blob/master/Documentation/building/debugging-instructions.md
                  */
                 var sshCommand =
-                    sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {deployPath}/DevSyncAgent.dll");
+                    sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {DeployPath}/DevSyncAgent.dll");
 
                 sshCommand.BeginExecute(ar =>
                 {

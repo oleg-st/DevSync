@@ -1,10 +1,11 @@
 ﻿using System.Security.Cryptography;
+using Renci.SshNet.Security.Cryptography.Ciphers.Modes;
 
 namespace DevSync.Cryptography
 {
-    public class NativeAesCipher : NativeBlockCipher
+    public class NativeAesCipherCtr : NativeBlockCipher
     {
-        public NativeAesCipher(byte[] key, Renci.SshNet.Security.Cryptography.Ciphers.CipherMode mode) : base(key, 16, mode)
+        public NativeAesCipherCtr(byte[] key, byte[] iv) : base(key, 16, new CtrCipherMode(iv))
         {
         }
 

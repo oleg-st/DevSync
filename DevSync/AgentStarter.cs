@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
+using ICSharpCode.SharpZipLib.Tar;
 
 namespace DevSync
 {
@@ -15,6 +17,9 @@ namespace DevSync
         // Initialize options
         protected string DestPathValue;
         protected List<string> ExcludeListValue;
+
+        // TODO: hardcoded path
+        protected const string DeployPath = ".devsync";
 
         public bool IsStarted { get; protected set; }
 
@@ -142,6 +147,16 @@ namespace DevSync
             {
                 agentStarter = new AgentStarterLocal(logger);
             }
+            else if (syncOptions.ExternalSsh)
+            {
+                agentStarter = new AgentStarterSshExternal(logger)
+                {
+                    Host = syncOptions.Host,
+                    Username = syncOptions.UserName,
+                    DeployAgent = syncOptions.DeployAgent,
+                    KeyFilePath = syncOptions.KeyFilePath,
+                };
+            }
             else
             {
                 agentStarter = new AgentStarterSsh(logger)
@@ -171,6 +186,33 @@ namespace DevSync
         public void Stop()
         {
             Cleanup();
+        }
+
+        protected byte[] CreateTarForAgent()
+        {
+            var files = new[]
+            {
+                "DevSyncAgent.dll",
+                "DevSyncAgent.deps.json",
+                "DevSyncAgent.runtimeconfig.json",
+                "DevSyncLib.dll",
+                "DevSyncLib.deps.json"
+            };
+
+            using var memoryStream = new MemoryStream();
+            using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
+            {
+                var assemblyPath = Path.GetDirectoryName(typeof(PacketStream).Assembly.Location);
+
+                foreach (var filename in files)
+                {
+                    var tarEntry = TarEntry.CreateEntryFromFile(Path.Combine(assemblyPath, filename));
+                    tarEntry.Name = Path.GetFileName(filename);
+                    tarArchive.WriteEntry(tarEntry, true);
+                }
+            }
+
+            return memoryStream.ToArray();
         }
     }
 }
