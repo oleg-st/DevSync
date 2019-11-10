@@ -10,6 +10,10 @@ namespace DevSyncLib.Command
         private readonly ILogger _logger;
 
         protected BinaryWriter BinaryWriter;
+
+        private const int BUFFER_LENGTH = 65536;
+        private readonly byte[] _buffer = new byte[BUFFER_LENGTH];
+        
         public Writer(Stream stream, ILogger logger)
         {
             _logger = logger;
@@ -94,9 +98,6 @@ namespace DevSyncLib.Command
 
         public bool WriteFsChangeBody(string filename, FsChange fsChange)
         {
-            const int bufferLength = 65536;
-            Span<byte> buffer = stackalloc byte[bufferLength];
-
             long written = 0;
 
             FileStream fs = null;
@@ -145,7 +146,7 @@ namespace DevSyncLib.Command
 
                     try
                     {
-                        read = fs.Read(buffer);
+                        read = fs.Read(_buffer, 0, BUFFER_LENGTH);
                         if (read <= 0)
                         {
                             break;
@@ -160,9 +161,9 @@ namespace DevSyncLib.Command
                     }
 
                     WriteInt(read);
-                    BinaryWriter.Write(buffer.Slice(0, read));
+                    BinaryWriter.Write(_buffer, 0, read);
                     written += read;
-                } while (read == bufferLength);
+                } while (read == BUFFER_LENGTH);
 
                 // check written
                 if (written != fsChange.FsEntry.Length)

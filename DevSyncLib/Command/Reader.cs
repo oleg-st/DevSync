@@ -12,6 +12,9 @@ namespace DevSyncLib.Command
 
         protected BinaryReader BinaryReader;
 
+        private const int BUFFER_LENGTH = 65536;
+        private readonly byte[] _buffer = new byte[BUFFER_LENGTH];
+
         // detect shebang (#!) to make file executable
         private static readonly bool PlatformHasChmod = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         private static readonly byte[] ShebangBytes = { (byte)'#', (byte)'!' };
@@ -114,8 +117,6 @@ namespace DevSyncLib.Command
 
         public bool ReadFsChangeBody(string path, FsChange fsChange)
         {
-            const int bufferLength = 65536;
-            Span<byte> buffer = stackalloc byte[bufferLength];
             var shebangPosition = 0;
             var doChmod = false;
 
@@ -138,7 +139,7 @@ namespace DevSyncLib.Command
                     var remain = chunkSize;
                     while (remain > 0)
                     {
-                        var read = BinaryReader.Read(buffer.Slice(0, Math.Min(bufferLength, remain)));
+                        var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
                         if (read <= 0)
                         {
                             throw new EndOfStreamException($"Premature end of stream {remain}, {chunkSize}, {read})");
@@ -157,7 +158,7 @@ namespace DevSyncLib.Command
                         {
                             for (var i = 0; i < read;)
                             {
-                                if (buffer[i++] != ShebangBytes[shebangPosition++])
+                                if (_buffer[i++] != ShebangBytes[shebangPosition++])
                                 {
                                     // no shebang
                                     shebangPosition = int.MaxValue;
@@ -171,7 +172,7 @@ namespace DevSyncLib.Command
                             }
                         }
 
-                        fs?.Write(buffer.Slice(0, read));
+                        fs?.Write(_buffer, 0, read);
                         written += read;
                         remain -= read;
                     }
@@ -231,9 +232,6 @@ namespace DevSyncLib.Command
 
         public void SkipFsChangeBody()
         {
-            const int bufferLength = 65536;
-            Span<byte> buffer = stackalloc byte[bufferLength];
-
             do
             {
                 var chunkSize = ReadInt();
@@ -245,7 +243,7 @@ namespace DevSyncLib.Command
                 var remain = chunkSize;
                 while (remain > 0)
                 {
-                    var read = BinaryReader.Read(buffer.Slice(0, Math.Min(bufferLength, remain)));
+                    var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
                     if (read == 0)
                     {
                         throw new EndOfStreamException();

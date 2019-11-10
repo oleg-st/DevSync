@@ -583,6 +583,7 @@ namespace DevSync
             _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);
             _needToScan = true;
             _pathScanner.Clear();
+            _gitIsBusy = false;
             lock (_changes)
             {
                 _changes.Clear();
