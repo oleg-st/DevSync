@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
@@ -33,7 +32,9 @@ namespace DevSync
         // max items body size in chunk (soft limit)
         private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
-        private readonly object _syncHasWork = new object();
+
+        private readonly ConditionVariable _hasWorkConditionVariable;
+
         private readonly ApplyRequest _applyRequest;
         private readonly PathScanner _pathScanner;
         private readonly SentReporter _sentReporter;
@@ -95,6 +96,7 @@ namespace DevSync
             _logger = logger;
             _pathScanner = new PathScanner(this);
             _sentReporter = new SentReporter(_logger);
+            _hasWorkConditionVariable = new ConditionVariable();
 
             if (!Directory.Exists(syncOptions.SourcePath))
             {
@@ -216,7 +218,6 @@ namespace DevSync
             }
 
             _needToScan = false;
-            NotifyHasWork();
             _logger.Log(
                 $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
         }
@@ -263,7 +264,7 @@ namespace DevSync
 
             if (notifyHasWork)
             {
-                NotifyHasWork();
+                _hasWorkConditionVariable.Notify();
             }
         }
 
@@ -353,15 +354,7 @@ namespace DevSync
         private void SetGitIsBusy(bool value)
         {
             _gitIsBusy = value;
-            NotifyHasWork();
-        }
-
-        private void NotifyHasWork()
-        {
-            lock (_syncHasWork)
-            {
-                Monitor.Pulse(_syncHasWork);
-            }
+            _hasWorkConditionVariable.Notify();
         }
 
         private void WaitForWork()
@@ -391,11 +384,7 @@ namespace DevSync
                         timeout = readyTimeout - (int)elapsed;
                     }
                 }
-
-                lock (_syncHasWork)
-                {
-                    Monitor.Wait(_syncHasWork, timeout);
-                }
+                _hasWorkConditionVariable.Wait(timeout);
             }
 
             if (_isReady)
@@ -498,9 +487,7 @@ namespace DevSync
                 }
             }
 
-            NotifyHasWork();
             _sentReporter.Report(_applyRequest.Changes, totalSize, sw.Elapsed);
-
             return !hasErrors;
         }
 
@@ -518,7 +505,7 @@ namespace DevSync
             _fileSystemWatcher.IncludeSubdirectories = true;
             _fileSystemWatcher.EnableRaisingEvents = true;
 
-            Task.Factory.StartNew(_pathScanner.Run, TaskCreationOptions.LongRunning);
+            _pathScanner.Start();
 
             while (!_needToQuit)
             {
@@ -589,7 +576,7 @@ namespace DevSync
                 _changes.Clear();
                 _changesSize = 0;
             }
-            NotifyHasWork();
+            _hasWorkConditionVariable.Notify();
         }
 
         private void Stop()
@@ -597,7 +584,7 @@ namespace DevSync
             _needToQuit = true;
             _agentStarter.Stop();
             _pathScanner.Stop();
-            NotifyHasWork();
+            _hasWorkConditionVariable.Notify();
         }
 
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)

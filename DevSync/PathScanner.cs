@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using DevSyncLib;
 
 namespace DevSync
@@ -10,39 +11,17 @@ namespace DevSync
     {
         public class PathScanner
         {
-            private bool _needToQuit;
-
-            private readonly object _syncHasWork = new object();
-
+            private volatile bool _needToQuit;
+            private readonly ConditionVariable _hasWorkConditionVariable;
             private readonly HashSet<string> _pathsToScan = new HashSet<string>();
-
-            private readonly Sender _sender;
-
+            private readonly Sender _sender; 
             private readonly CancellationTokenSource _cancellationTokenSource;
 
             public PathScanner(Sender sender)
             {
                 _sender = sender;
                 _cancellationTokenSource = new CancellationTokenSource();
-            }
-
-            private bool HasWork
-            {
-                get
-                {
-                    lock (_pathsToScan)
-                    {
-                        return _needToQuit || _pathsToScan.Count > 0;
-                    }
-                }
-            }
-
-            private void NotifyHasWork()
-            {
-                lock (_syncHasWork)
-                {
-                    Monitor.Pulse(_syncHasWork);
-                }
+                _hasWorkConditionVariable = new ConditionVariable();
             }
 
             private void AddDirectoryContents(string path)
@@ -53,27 +32,14 @@ namespace DevSync
                         false, _cancellationTokenSource.Token);
                     foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                     {
-                        _sender.AddChangeForPath(srcEntry.Path, false);
+                        _sender.AddChangeForPath(srcEntry.Path);
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    return;
-                }
-                _sender.NotifyHasWork();
-            }
-
-            private void WaitForWork()
-            {
-                while (!HasWork)
-                {
-                    lock (_syncHasWork)
-                    {
-                        Monitor.Wait(_syncHasWork);
-                    }
                 }
             }
-
+            
             private void DoWork()
             {
                 string path;
@@ -91,20 +57,35 @@ namespace DevSync
                 AddDirectoryContents(path);
             }
 
-            public void Run()
+            protected void Run()
             {
                 while (!_needToQuit)
                 {
+                    _hasWorkConditionVariable.WaitForCondition(() =>
+                    {
+                        lock (_pathsToScan)
+                        {
+                            return _needToQuit || _pathsToScan.Count > 0;
+                        }
+                    });
                     DoWork();
-                    WaitForWork();
                 }
+            }
+
+            public void Start()
+            {
+                Task.Factory.StartNew(Run, TaskCreationOptions.LongRunning);
             }
 
             public void Stop()
             {
                 _cancellationTokenSource.Cancel();
-                _needToQuit = true;
-                NotifyHasWork();
+                lock (_pathsToScan)
+                {
+                    _pathsToScan.Clear();
+                    _needToQuit = true;
+                }
+                _hasWorkConditionVariable.Notify();
             }
 
             public void Add(string path)
@@ -113,7 +94,7 @@ namespace DevSync
                 {
                     _pathsToScan.Add(path);
                 }
-                NotifyHasWork();
+                _hasWorkConditionVariable.Notify();
             }
 
             public void Clear()
@@ -122,7 +103,6 @@ namespace DevSync
                 {
                     _pathsToScan.Clear();
                 }
-                NotifyHasWork();
             }
         }
     }
