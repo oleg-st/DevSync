@@ -43,7 +43,7 @@ namespace DevSync
             private void DoWork()
             {
                 string path;
-                lock (_pathsToScan)
+                lock (_hasWorkConditionVariable)
                 {
                     path = _pathsToScan.FirstOrDefault();
                     if (path == null)
@@ -61,13 +61,7 @@ namespace DevSync
             {
                 while (!_needToQuit)
                 {
-                    _hasWorkConditionVariable.WaitForCondition(() =>
-                    {
-                        lock (_pathsToScan)
-                        {
-                            return _needToQuit || _pathsToScan.Count > 0;
-                        }
-                    });
+                    _hasWorkConditionVariable.WaitForCondition(() => _needToQuit || _pathsToScan.Count > 0);
                     DoWork();
                 }
             }
@@ -80,7 +74,7 @@ namespace DevSync
             public void Stop()
             {
                 _cancellationTokenSource.Cancel();
-                lock (_pathsToScan)
+                lock (_hasWorkConditionVariable)
                 {
                     _pathsToScan.Clear();
                     _needToQuit = true;
@@ -90,7 +84,7 @@ namespace DevSync
 
             public void Add(string path)
             {
-                lock (_pathsToScan)
+                lock (_hasWorkConditionVariable)
                 {
                     _pathsToScan.Add(path);
                 }
@@ -99,7 +93,7 @@ namespace DevSync
 
             public void Clear()
             {
-                lock (_pathsToScan)
+                lock (_hasWorkConditionVariable)
                 {
                     _pathsToScan.Clear();
                 }

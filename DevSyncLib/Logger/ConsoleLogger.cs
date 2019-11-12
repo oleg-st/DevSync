@@ -28,12 +28,18 @@ namespace DevSyncLib.Logger
 
         public void Pause()
         {
-            _isPaused = true;
+            lock (_isPausedConditionVariable)
+            {
+                _isPaused = true;
+            }
         }
 
         public void Resume()
         {
-            _isPaused = false;
+            lock (_isPausedConditionVariable)
+            {
+                _isPaused = false;
+            }
             _isPausedConditionVariable.Notify();
         }
     }

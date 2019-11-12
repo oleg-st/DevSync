@@ -117,7 +117,13 @@ namespace DevSyncLib.Command
                     _flushException = exception;
                 }
                 _flushStopwatch = Stopwatch.StartNew();
-                _needToFlush = false;
+                lock (_hasWorkConditionVariable)
+                {
+                    lock (_flushConditionVariable)
+                    {
+                        _needToFlush = false;
+                    }
+                }
                 _flushConditionVariable.Notify();
             }
 
@@ -137,7 +143,11 @@ namespace DevSyncLib.Command
 
             public void Stop()
             {
-                _needToQuit = true;
+                lock (_hasWorkConditionVariable)
+                {
+                    _needToQuit = true;
+                }
+
                 // wait for current flush
                 lock (this)
                 {
@@ -162,7 +172,13 @@ namespace DevSyncLib.Command
                     _flushException = null;
                     _chunkLength = length;
                     Buffer.BlockCopy(data, offset, _chunkBytes, LENGTH_SIZE, _chunkLength);
-                    _needToFlush = true;
+                    lock (_hasWorkConditionVariable)
+                    {
+                        lock (_flushConditionVariable)
+                        {
+                            _needToFlush = true;
+                        }
+                    }
                     _hasWorkConditionVariable.Notify();
                 }
             }

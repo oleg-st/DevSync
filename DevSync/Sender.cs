@@ -178,7 +178,7 @@ namespace DevSync
 
             // During scan, changes could come from file system events or from PathScanner, we should not overwrite them.
             var itemsCount = 0;
-            lock (_changes)
+            lock (_hasWorkConditionVariable)
             {
                 foreach (var srcEntry in srcList)
                 {
@@ -245,7 +245,7 @@ namespace DevSync
         // Please do not pass stale FsChange
         private void AddChange(FsChange fsChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
-            lock (_changes)
+            lock (_hasWorkConditionVariable)
             {
                 if (_changes.TryGetValue(fsChange.Key, out var oldFsChange))
                 {
@@ -343,7 +343,7 @@ namespace DevSync
         {
             get
             {
-                lock (_changes)
+                lock (_hasWorkConditionVariable)
                 {
                     return _changes.Count > 0;
                 }
@@ -364,27 +364,34 @@ namespace DevSync
             var sw = Stopwatch.StartNew();
             while (!HasWork)
             {
-                var timeout = Timeout.Infinite;
-                if (waitForReady)
+                lock (_hasWorkConditionVariable)
                 {
-                    var elapsed = sw.ElapsedMilliseconds;
-                    // no work for some time and git is not busy
-                    if (elapsed >= readyTimeout)
+                    if (!HasWork)
                     {
-                        if (!_gitIsBusy)
+                        var timeout = Timeout.Infinite;
+                        if (waitForReady)
                         {
-                            _sentReporter.Flush();
-                            _logger.Log("Ready");
-                            waitForReady = false;
-                            _isReady = true;
+                            var elapsed = sw.ElapsedMilliseconds;
+                            // no work for some time and git is not busy
+                            if (elapsed >= readyTimeout)
+                            {
+                                if (!_gitIsBusy)
+                                {
+                                    _sentReporter.Flush();
+                                    _logger.Log("Ready");
+                                    waitForReady = false;
+                                    _isReady = true;
+                                }
+                            }
+                            else
+                            {
+                                timeout = readyTimeout - (int) elapsed;
+                            }
                         }
-                    }
-                    else
-                    {
-                        timeout = readyTimeout - (int)elapsed;
+
+                        _hasWorkConditionVariable.Wait(timeout);
                     }
                 }
-                _hasWorkConditionVariable.Wait(timeout);
             }
 
             if (_isReady)
@@ -415,7 +422,7 @@ namespace DevSync
         {
             // fetch changes
             long totalSize = 0;
-            lock (_changes)
+            lock (_hasWorkConditionVariable)
             {
                 if (_changes.Count == 0)
                 {
@@ -443,7 +450,7 @@ namespace DevSync
 
             bool hasErrors = false;
             // process sent changes
-            lock (_changes)
+            lock (_hasWorkConditionVariable)
             {
                 foreach (var fsChange in _applyRequest.Changes)
                 {
@@ -568,11 +575,11 @@ namespace DevSync
         private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
         {
             _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);
-            _needToScan = true;
-            _pathScanner.Clear();
-            _gitIsBusy = false;
-            lock (_changes)
+            lock (_hasWorkConditionVariable)
             {
+                _needToScan = true;
+                _pathScanner.Clear();
+                _gitIsBusy = false;
                 _changes.Clear();
                 _changesSize = 0;
             }
@@ -581,7 +588,10 @@ namespace DevSync
 
         private void Stop()
         {
-            _needToQuit = true;
+            lock (_hasWorkConditionVariable)
+            {
+                _needToQuit = true;
+            }
             _agentStarter.Stop();
             _pathScanner.Stop();
             _hasWorkConditionVariable.Notify();

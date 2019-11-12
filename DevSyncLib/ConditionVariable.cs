@@ -5,29 +5,32 @@ namespace DevSyncLib
 {
     public class ConditionVariable
     {
-        private readonly object _syncObject = new object();
-
         public void Notify()
         {
-            lock (_syncObject)
+            lock (this)
             {
-                Monitor.Pulse(_syncObject);
+                Monitor.Pulse(this);
             }
         }
 
+        // use lock(this) before call
         public void Wait(int timeout = Timeout.Infinite)
         {
-            lock (_syncObject)
-            {
-                Monitor.Wait(_syncObject, timeout);
-            }
+            Monitor.Wait(this, timeout);
         }
 
+        // change condition in lock(this)
         public void WaitForCondition(Func<bool> conditionFunc, int timeout = Timeout.Infinite)
         {
             while (!conditionFunc())
             {
-                Wait(timeout);
+                lock (this)
+                {
+                    if (!conditionFunc())
+                    {
+                        Monitor.Wait(this, timeout);
+                    }
+                }
             }
         }
     }
