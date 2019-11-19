@@ -42,6 +42,10 @@ namespace DevSyncLib
                     });
                 }
             }
+            catch (DirectoryNotFoundException)
+            {
+                // directory vanished during scan
+            }
             catch (Exception ex)
             {
                 _logger.Log($"Scan error {ex}", LogLevel.Warning);
@@ -71,6 +75,10 @@ namespace DevSyncLib
                         try
                         {
                             fsEntry = FsEntry.FromFsInfo(path, fsInfo, _withInfo);
+                        }
+                        catch (DirectoryNotFoundException)
+                        {
+                            // directory vanished during scan
                         }
                         catch (Exception ex)
                         {
