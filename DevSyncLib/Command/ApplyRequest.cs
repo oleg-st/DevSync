@@ -10,7 +10,15 @@ namespace DevSyncLib.Command
     {
         public override short Signature => 5;
 
-        public List<FsChange> Changes;
+        private List<FsChange> _changes;
+
+        // max items body size in chunk (soft limit)
+        public const int ChangesMaxSize = 100 * 1024 * 1024;
+        // max items in chunk
+        public const int ChangesMaxCount = 2500;
+
+        public List<FsChange> SentChanges;
+        public long SentChangesSize;
 
         protected Reader Reader;
 
@@ -21,18 +29,31 @@ namespace DevSyncLib.Command
             Reader = reader;
         }
 
+        public void SetChanges(IEnumerable<FsChange> changes)
+        {
+            if (_changes == null)
+            {
+                _changes = new List<FsChange>(ChangesMaxCount);
+            }
+            else
+            {
+                _changes.Clear();
+            }
+            _changes.AddRange(changes.Take(ChangesMaxCount));
+        }
+
         private FsChangeResult ApplyFsChange(FsChange fsChange, FileMaskList excludeList)
         {
-            var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
+            var path = Path.Combine(BasePath, fsChange.Path);
             FsChangeResultCode resultCode;
             string error = null;
             switch (fsChange.ChangeType)
             {
-                case FsChangeType.Change when fsChange.FsEntry.IsDirectory:
+                case FsChangeType.Change when fsChange.IsDirectory:
                     try
                     {
                         Directory.CreateDirectory(path);
-                        Directory.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
+                        Directory.SetLastWriteTime(path, fsChange.LastWriteTime);
                         resultCode = FsChangeResultCode.Ok;
                     }
                     catch (Exception ex)
@@ -74,7 +95,7 @@ namespace DevSyncLib.Command
                     {
                         var scanDirectory = new ScanDirectory(Logger, excludeList, false);
                         Exception exception = null;
-                        foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.FsEntry.Path))
+                        foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.Path))
                         {
                             var fsEntryPath = Path.Combine(BasePath, fsEntry.Path);
                             try
@@ -94,7 +115,7 @@ namespace DevSyncLib.Command
                                 {
                                     exception = ex;
                                 }
-                                Logger.Log($"Delete error {fsEntryPath} {ex}", LogLevel.Warning);
+                                Logger.Log($"Error deleting {fsEntryPath}: {ex.Message}", LogLevel.Warning);
                             }
                         }
 
@@ -108,7 +129,7 @@ namespace DevSyncLib.Command
                             {
                                 exception = ex;
                             }
-                            Logger.Log($"Delete error {path} {ex}", LogLevel.Warning);
+                            Logger.Log($"Error deleting {path}: {ex.Message}", LogLevel.Warning);
                         }
 
                         if (exception == null)
@@ -118,7 +139,7 @@ namespace DevSyncLib.Command
                         else
                         {
                             // scan directory see any file -> error (handle excludes)
-                            if (scanDirectory.ScanPath(BasePath, fsChange.FsEntry.Path).Any(x => !x.IsDirectory))
+                            if (scanDirectory.ScanPath(BasePath, fsChange.Path).Any(x => !x.IsDirectory))
                             {
                                 resultCode = FsChangeResultCode.Error;
                                 error = exception.Message;
@@ -152,13 +173,14 @@ namespace DevSyncLib.Command
                 case FsChangeType.Rename:
                     try
                     {
-                        if (fsChange.FsEntry.IsDirectory)
+                        var oldPath = Path.Combine(BasePath, fsChange.OldPath);
+                        if (Directory.Exists(oldPath))
                         {
-                            Directory.Move(Path.Combine(BasePath, fsChange.OldPath), path);
+                            Directory.Move(oldPath, path);
                         }
                         else
                         {
-                            File.Move(Path.Combine(BasePath, fsChange.OldPath), path, true);
+                            File.Move(oldPath, path, true);
                         }
 
                         resultCode = FsChangeResultCode.Ok;
@@ -178,7 +200,7 @@ namespace DevSyncLib.Command
             return new FsChangeResult
             {
                 ChangeType = fsChange.ChangeType,
-                Path = fsChange.FsEntry.Path,
+                Path = fsChange.Path,
                 ResultCode = resultCode,
                 ErrorMessage = error
             };
@@ -198,13 +220,13 @@ namespace DevSyncLib.Command
                 var fsChangeResult = ApplyFsChange(fsChange, excludeList);
                 if (fsChangeResult.ResultCode != FsChangeResultCode.Ok && fsChange.ChangeType == FsChangeType.Change)
                 {
-                    var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
-                    if (fsChange.FsEntry.IsDirectory && File.Exists(path) 
-                        || !fsChange.FsEntry.IsDirectory && Directory.Exists(path))
+                    var path = Path.Combine(BasePath, fsChange.Path);
+                    if (fsChange.IsDirectory && File.Exists(path) 
+                        || !fsChange.IsDirectory && Directory.Exists(path))
                     {
                         // delete and retry
                         var fsRemoveChangeResult = ApplyFsChange(
-                            new FsChange {ChangeType = FsChangeType.Remove, FsEntry = fsChange.FsEntry},
+                            FsChange.CreateRemove(fsChange.Path),
                                 excludeList);
                         if (fsRemoveChangeResult.ResultCode == FsChangeResultCode.Ok)
                         {
@@ -221,19 +243,49 @@ namespace DevSyncLib.Command
             }
         }
 
+        public void ClearChanges()
+        {
+            _changes.Clear();
+            SentChanges.Clear();
+            SentChangesSize = 0;
+        }
+
         public override void Write(Writer writer)
         {
-            foreach (var fsChange in Changes)
+            if (SentChanges == null)
             {
+                SentChanges = new List<FsChange>(ChangesMaxCount);
+            }
+            else
+            {
+                SentChanges.Clear();
+            }
+            SentChangesSize = 0;
+            foreach (var fsChange in _changes)
+            {
+                if (SentChangesSize >= ChangesMaxSize)
+                {
+                    break;
+                }
+
                 if (!fsChange.Expired)
                 {
-                    writer.WriteFsChange(fsChange);
+                    if (fsChange.NeedToResolve)
+                    {
+                        fsChange.Resolve(BasePath);
+                    }
                     if (fsChange.HasBody)
                     {
-                        var path = Path.Combine(BasePath, fsChange.FsEntry.Path);
+                        var path = Path.Combine(BasePath, fsChange.Path);
                         writer.WriteFsChangeBody(path, fsChange);
                     }
+                    else
+                    {
+                        writer.WriteFsChange(fsChange);
+                    }
                 }
+                SentChanges.Add(fsChange);
+                SentChangesSize += fsChange.BodySize;
             }
             writer.WriteFsChange(FsChange.Empty);
         }

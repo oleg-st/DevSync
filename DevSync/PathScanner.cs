@@ -32,7 +32,7 @@ namespace DevSync
                         false, _cancellationTokenSource.Token);
                     foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                     {
-                        _sender.AddChangeForPath(srcEntry.Path);
+                        _sender.AddChange(FsChange.CreateChange(srcEntry.Path));
                     }
                 }
                 catch (OperationCanceledException)

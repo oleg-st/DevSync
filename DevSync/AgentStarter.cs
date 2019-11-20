@@ -66,7 +66,7 @@ namespace DevSync
                 DoStart();
                 IsStarted = true;
                 IsInitialized = false;
-                Logger.Log($"Started in {sw.ElapsedMilliseconds} ms");
+                Logger.Log($"Agent started in {sw.ElapsedMilliseconds} ms");
             }
             catch (Exception)
             {
@@ -96,7 +96,7 @@ namespace DevSync
                 throw new SyncException("Agent initialize failed");
             }
             IsInitialized = true;
-            Logger.Log($"Initialized in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Agent initialized in {sw.ElapsedMilliseconds} ms");
         }
 
         public abstract void DoStart();

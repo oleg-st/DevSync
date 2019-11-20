@@ -74,10 +74,16 @@ namespace DevSyncLib.Command
             {
                 return;
             }
-            WriteFsEntry(fsChange.FsEntry);
-            if (fsChange.ChangeType == FsChangeType.Rename)
+            WriteString(fsChange.Path);
+            switch (fsChange.ChangeType)
             {
-                WriteString(fsChange.OldPath);
+                case FsChangeType.Change:
+                    WriteLong(fsChange.IsDirectory ? -1 : fsChange.Length);
+                    WriteDateTime(fsChange.LastWriteTime);
+                    break;
+                case FsChangeType.Rename:
+                    WriteString(fsChange.OldPath);
+                    break;
             }
         }
 
@@ -122,17 +128,14 @@ namespace DevSyncLib.Command
                     }
 
                     // cannot read file (sender error)
+                    WriteFsChange(fsChange);
                     WriteInt(-1);
                     return false;
                 }
 
-                // check length
-                if (fs.Length != fsChange.FsEntry.Length)
-                {
-                    // file length mismatch
-                    WriteInt(-1);
-                    return false;
-                }
+                // length resolved
+                fsChange.Length = fs.Length;
+                WriteFsChange(fsChange);
 
                 int read;
                 do
@@ -166,7 +169,7 @@ namespace DevSyncLib.Command
                 } while (read == BUFFER_LENGTH);
 
                 // check written
-                if (written != fsChange.FsEntry.Length)
+                if (written != fsChange.Length)
                 {
                     // file length mismatch
                     WriteInt(-1);

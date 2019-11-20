@@ -12,7 +12,6 @@ namespace DevSyncLib
         public static readonly FsEntry Empty = new FsEntry { Path = "" };
         public bool IsEmpty => string.IsNullOrEmpty(Path);
 
-
         public static string NormalizePath(string path)
         {
             return path.Replace('\\', '/');

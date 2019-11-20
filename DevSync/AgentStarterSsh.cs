@@ -133,10 +133,10 @@ namespace DevSync
             if (sshCommand.ExitStatus != 0)
             {
                 throw new SyncException(
-                    $"Deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
+                    $"Agent deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
             }
 
-            Logger.Log($"Deployed agent in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Agent deployed in {sw.ElapsedMilliseconds} ms");
         }
 
         private string GetKeyPassPhrase()

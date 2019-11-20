@@ -83,12 +83,19 @@ namespace DevSyncLib.Command
             {
                 return FsChange.Empty;
             }
-            var fsChange = new FsChange
+
+            var fsChange = new FsChange(changeType, ReadString());
+            switch (fsChange.ChangeType)
             {
-                ChangeType = changeType,
-                FsEntry = ReadFsEntry()
-            };
-            fsChange.OldPath = fsChange.ChangeType == FsChangeType.Rename ? ReadString() : string.Empty;
+                case FsChangeType.Change:
+                    fsChange.Length = ReadLong();
+                    fsChange.IsDirectory = fsChange.Length == -1;
+                    fsChange.LastWriteTime = ReadDateTime();
+                    break;
+                case FsChangeType.Rename:
+                    fsChange.OldPath = ReadString();
+                    break;
+            }
             return fsChange;
         }
 
@@ -118,7 +125,7 @@ namespace DevSyncLib.Command
         public bool ReadFsChangeBody(string path, FsChange fsChange)
         {
             var shebangPosition = 0;
-            var doChmod = false;
+            var makeExecutable = false;
 
             string tempPath = null;
             FileStream fs = null;
@@ -166,7 +173,7 @@ namespace DevSyncLib.Command
                                 }
                                 if (shebangPosition == ShebangLength)
                                 {
-                                    doChmod = true;
+                                    makeExecutable = true;
                                     break;
                                 }
                             }
@@ -178,22 +185,22 @@ namespace DevSyncLib.Command
                     }
                 } while (chunkSize > 0);
 
-                bodyReadSuccess = written == fsChange.FsEntry.Length;
-                if (bodyReadSuccess && doChmod)
+                bodyReadSuccess = written == fsChange.Length;
+                if (bodyReadSuccess && makeExecutable)
                 {
                     // 0755, rwxr-xr-x
-                    fs.StreamChmod(0b111_101_101);
+                    fs.ChangeMode(0b111_101_101);
                 }
 
                 // create empty file
-                if (bodyReadSuccess && fsChange.FsEntry.Length == 0)
+                if (bodyReadSuccess && fsChange.Length == 0)
                 {
                     var directoryName = Path.GetDirectoryName(path);
                     Directory.CreateDirectory(directoryName);
                     using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
                     {
                     }
-                    File.SetLastWriteTime(path, fsChange.FsEntry.LastWriteTime);
+                    File.SetLastWriteTime(path, fsChange.LastWriteTime);
                 }
 
                 return bodyReadSuccess;
@@ -213,7 +220,7 @@ namespace DevSyncLib.Command
                     {
                         try
                         {
-                            File.SetLastWriteTime(tempPath, fsChange.FsEntry.LastWriteTime);
+                            File.SetLastWriteTime(tempPath, fsChange.LastWriteTime);
                             File.Move(tempPath, path, true);
                         }
                         catch (Exception)

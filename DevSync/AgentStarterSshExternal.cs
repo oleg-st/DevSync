@@ -74,10 +74,10 @@ namespace DevSync
             if (sshCommand.Task.Result.ExitCode != 0)
             {
                 throw new SyncException(
-                    $"Deploy failed {path} ({sshCommand.Task.Result.ExitCode}, {sshCommand.Result.StandardError})");
+                    $"Agent deploy failed {path} ({sshCommand.Task.Result.ExitCode}, {sshCommand.Result.StandardError})");
             }
 
-            Logger.Log($"Deployed agent in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Agent deployed in {sw.ElapsedMilliseconds} ms");
         }
 
         protected string GetSshExecutable()

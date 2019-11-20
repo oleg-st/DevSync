@@ -24,13 +24,8 @@ namespace DevSync
         private readonly FileMaskList _excludeList;
 
         private readonly Dictionary<string, FsChange> _changes;
-        private long _changesSize;
         private readonly AgentStarter _agentStarter;
 
-        // max items in chunk
-        private const int CHANGES_MAX_COUNT = 2500;
-        // max items body size in chunk (soft limit)
-        private const int CHANGES_MAX_SIZE = 100 * 1024 * 1024;
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
 
         private readonly ConditionVariable _hasWorkConditionVariable;
@@ -38,7 +33,7 @@ namespace DevSync
         private readonly ApplyRequest _applyRequest;
         private readonly PathScanner _pathScanner;
         private readonly SentReporter _sentReporter;
-        private bool _isReady;
+        private bool _isSending;
 
         protected class SentReporter
         {
@@ -97,25 +92,23 @@ namespace DevSync
             _pathScanner = new PathScanner(this);
             _sentReporter = new SentReporter(_logger);
             _hasWorkConditionVariable = new ConditionVariable();
+            _srcPath = Path.GetFullPath(syncOptions.SourcePath);
 
-            if (!Directory.Exists(syncOptions.SourcePath))
+            if (!Directory.Exists(_srcPath))
             {
-                throw new SyncException($"Invalid source path: {syncOptions.SourcePath}");
+                throw new SyncException($"Invalid source path: {_srcPath}");
             }
 
-            _srcPath = syncOptions.SourcePath;
             _excludeList = new FileMaskList(); 
             _excludeList.SetList(syncOptions.ExcludeList);
 
             _changes = new Dictionary<string, FsChange>();
-            _changesSize = 0;
             _needToScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
             _applyRequest = new ApplyRequest(_logger)
             {
                 BasePath = _srcPath,
-                Changes = new List<FsChange>(CHANGES_MAX_COUNT)
             };
         }
 
@@ -178,6 +171,7 @@ namespace DevSync
 
             // During scan, changes could come from file system events or from PathScanner, we should not overwrite them.
             var itemsCount = 0;
+            long changesSize = 0;
             lock (_hasWorkConditionVariable)
             {
                 foreach (var srcEntry in srcList)
@@ -193,9 +187,12 @@ namespace DevSync
                         // add to changes (no replace)
                         if (!srcEntry.Compare(destEntry))
                         {
-                            var fsChange = new FsChange {ChangeType = FsChangeType.Change, FsEntry = srcEntry};
                             itemsCount++;
-                            AddChange(fsChange, false);
+                            if (!srcEntry.IsDirectory)
+                            {
+                                changesSize += srcEntry.Length;
+                            }
+                            AddChange(FsChange.CreateChange(srcEntry), false);
                         }
                     }
 
@@ -212,54 +209,30 @@ namespace DevSync
                     if (!_changes.ContainsKey(destEntry.Path))
                     {
                         itemsCount++;
-                        AddChange(new FsChange {ChangeType = FsChangeType.Remove, FsEntry = destEntry}, false);
+                        AddChange(FsChange.CreateRemove(destEntry.Path), false);
                     }
                 }
             }
 
             _needToScan = false;
             _logger.Log(
-                $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(_changesSize)} to send");
+                $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(changesSize)} to send");
         }
-
-        private FsChange GetChangeFromPath(string path)
-        {
-            return FsChange.FromFilename(Path.Combine(_srcPath, path), path);
-        }
-
-        // Safe way to add change (FsChange is created in realtime)
-        private void AddChangeForPath(string path, bool notifyHasWork = true, bool withSubdirectories = false)
-        {
-            AddChange(GetChangeFromPath(path), notifyHasWork, withSubdirectories);
-        }
-
-        // Safe way to add rename change (FsChange is created in realtime)
-        private void AddChangeForPathAndOldPath(string path, string oldPath, bool notifyHasWork = true, bool withSubdirectories = false)
-        {
-            var fsChange = GetChangeFromPath(path);
-            fsChange.ChangeType = FsChangeType.Rename;
-            fsChange.OldPath = oldPath;
-            AddChange(fsChange, notifyHasWork, withSubdirectories);
-        }
-
-        // Please do not pass stale FsChange
+        
         private void AddChange(FsChange fsChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
             lock (_hasWorkConditionVariable)
             {
-                if (_changes.TryGetValue(fsChange.Key, out var oldFsChange))
+                if (_changes.TryGetValue(fsChange.Path, out var oldFsChange))
                 {
                     oldFsChange.Expired = true;
-                    _changesSize -= oldFsChange.BodySize;
                 }
-
-                _changes[fsChange.Key] = fsChange;
-                _changesSize += fsChange.BodySize;
+                _changes[fsChange.Path] = fsChange;
             }
 
-            if (withSubdirectories && fsChange.FsEntry.IsDirectory)
+            if (withSubdirectories)
             {
-                _pathScanner.Add(fsChange.FsEntry.Path);
+                _pathScanner.Add(fsChange.Path);
             }
 
             if (notifyHasWork)
@@ -275,6 +248,12 @@ namespace DevSync
         
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
+            // ignore event for srcPath (don't know why it occurs rarely)
+            if (e.FullPath == _srcPath)
+            {
+                return;
+            }
+
             var path = GetPath(e.FullPath);
             if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GIT_INDEX_LOCK_FILENAME)
             {
@@ -285,11 +264,17 @@ namespace DevSync
             {
                 return;
             }
-            AddChangeForPath(path, withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
+            AddChange(FsChange.CreateChange(path), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
         }
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
         {
+            // ignore event for srcPath (don't know why it occurs rarely)
+            if (e.FullPath == _srcPath)
+            {
+                return;
+            }
+
             var path = GetPath(e.FullPath);
             if (_gitIsBusy && path == GIT_INDEX_LOCK_FILENAME)
             {
@@ -301,11 +286,17 @@ namespace DevSync
                 return;
             }
 
-            AddChangeForPath(path);
+            AddChange(FsChange.CreateRemove(path));
         }
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
         {
+            // ignore event for srcPath (don't know why it occurs rarely)
+            if (e.FullPath == _srcPath || e.OldFullPath == _srcPath)
+            {
+                return;
+            }
+
             var path = GetPath(e.FullPath);
             var oldPath = GetPath(e.OldFullPath);
             if (_gitIsBusy && oldPath == GIT_INDEX_LOCK_FILENAME)
@@ -319,7 +310,7 @@ namespace DevSync
                 // old file is not excluded -> delete it
                 if (!_excludeList.IsMatch(oldPath))
                 {
-                    AddChangeForPath(oldPath);
+                    AddChange(FsChange.CreateRemove(oldPath));
                 }
 
                 // both files are excluded -> do nothing
@@ -329,12 +320,12 @@ namespace DevSync
                 // old file is excluded -> send change with withSubdirectories
                 if (_excludeList.IsMatch(oldPath))
                 {                    
-                    AddChangeForPath(path, withSubdirectories: true);
+                    AddChange(FsChange.CreateChange(path), withSubdirectories: true);
                 }
                 else
                 {
                     // both files are not excluded -> send rename
-                    AddChangeForPathAndOldPath(path, oldPath);
+                    AddChange(FsChange.CreateRename(path, oldPath));
                 }
             }
         }
@@ -380,7 +371,7 @@ namespace DevSync
                                     _sentReporter.Flush();
                                     _logger.Log("Ready");
                                     waitForReady = false;
-                                    _isReady = true;
+                                    _isSending = false;
                                 }
                             }
                             else
@@ -391,15 +382,6 @@ namespace DevSync
 
                         _hasWorkConditionVariable.Wait(timeout);
                     }
-                }
-            }
-
-            if (_isReady)
-            {
-                _isReady = false;
-                if (HasChanges)
-                {
-                    _logger.Log("Sending");
                 }
             }
         }
@@ -421,27 +403,19 @@ namespace DevSync
         private bool SendChanges()
         {
             // fetch changes
-            long totalSize = 0;
             lock (_hasWorkConditionVariable)
             {
                 if (_changes.Count == 0)
                 {
                     return true;
                 }
+                _applyRequest.SetChanges(_changes.Values);
+            }
 
-                _applyRequest.Changes.Clear();
-                int itemsCount = 0;
-                foreach (var fsChange in _changes.Values)
-                {
-                    if (itemsCount >= CHANGES_MAX_COUNT || totalSize >= CHANGES_MAX_SIZE)
-                    {
-                        break;
-                    }
-
-                    _applyRequest.Changes.Add(fsChange);
-                    itemsCount++;
-                    totalSize += fsChange.BodySize;
-                }
+            if (!_isSending)
+            {
+                _logger.Log("Sending");
+                _isSending = true;
             }
 
             var sw = Stopwatch.StartNew();
@@ -452,13 +426,12 @@ namespace DevSync
             // process sent changes
             lock (_hasWorkConditionVariable)
             {
-                foreach (var fsChange in _applyRequest.Changes)
+                foreach (var fsChange in _applyRequest.SentChanges)
                 {
                     if (!fsChange.Expired)
                     {
-                        _changes.Remove(fsChange.Key);
-                        _changesSize -= fsChange.BodySize;
-                        if (responseResult.TryGetValue(fsChange.Key, out var fsChangeResult))
+                        _changes.Remove(fsChange.Path);
+                        if (responseResult.TryGetValue(fsChange.Path, out var fsChangeResult))
                         {
                             if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
                             {
@@ -475,26 +448,26 @@ namespace DevSync
                                     {
                                         hasErrors = true;
                                         _logger.Log(
-                                            $"Change apply error {fsChange.ChangeType} {fsChange.FsEntry.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
+                                            $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
                                     }
                                 }
-                                AddChangeForPath(fsChange.FsEntry.Path, false, withSubdirectories);
+                                AddChange(FsChange.CreateChange(fsChange.Path), false, withSubdirectories);
                             }
                         }
                     }
                     else
                     {
                         // remove expired
-                        if (_changes.TryGetValue(fsChange.Key, out var oldFsChange) && oldFsChange.Expired)
+                        if (_changes.TryGetValue(fsChange.Path, out var oldFsChange) && oldFsChange.Expired)
                         {
-                            _changes.Remove(fsChange.Key);
-                            _changesSize -= fsChange.BodySize;
+                            _changes.Remove(fsChange.Path);
                         }
                     }
                 }
             }
 
-            _sentReporter.Report(_applyRequest.Changes, totalSize, sw.Elapsed);
+            _sentReporter.Report(_applyRequest.SentChanges, _applyRequest.SentChangesSize, sw.Elapsed);
+            _applyRequest.ClearChanges();
             return !hasErrors;
         }
 
@@ -574,14 +547,13 @@ namespace DevSync
 
         private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
         {
-            _logger.Log($"FileSystemWatcherOnError {e.GetException()}", LogLevel.Error);
+            _logger.Log($"File system watcher error: {e.GetException()}", LogLevel.Error);
             lock (_hasWorkConditionVariable)
             {
                 _needToScan = true;
                 _pathScanner.Clear();
                 _gitIsBusy = false;
                 _changes.Clear();
-                _changesSize = 0;
             }
             _hasWorkConditionVariable.Notify();
         }

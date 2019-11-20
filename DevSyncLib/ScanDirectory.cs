@@ -37,8 +37,7 @@ namespace DevSyncLib
                     {
                         ReturnSpecialDirectories = false,
                         // Skip symlinks
-                        AttributesToSkip = FileAttributes.ReparsePoint,
-                        IgnoreInaccessible = false,
+                        AttributesToSkip = FileAttributes.ReparsePoint
                     });
                 }
             }
@@ -48,7 +47,7 @@ namespace DevSyncLib
             }
             catch (Exception ex)
             {
-                _logger.Log($"Scan error {ex}", LogLevel.Warning);
+                _logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
             }
 
             if (fileSystemInfos != null)
@@ -82,7 +81,7 @@ namespace DevSyncLib
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log($"Scan error {ex}", LogLevel.Warning);
+                            _logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
                         }
 
                         if (!fsEntry.IsEmpty)
