@@ -12,7 +12,7 @@ namespace DevSync
         public class PathScanner
         {
             private volatile bool _needToQuit;
-            private readonly ConditionVariable _hasWorkConditionVariable;
+            private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
             private readonly HashSet<string> _pathsToScan = new HashSet<string>();
             private readonly Sender _sender; 
             private readonly CancellationTokenSource _cancellationTokenSource;
@@ -21,7 +21,21 @@ namespace DevSync
             {
                 _sender = sender;
                 _cancellationTokenSource = new CancellationTokenSource();
-                _hasWorkConditionVariable = new ConditionVariable();
+            }
+
+            private void UpdateHasWork()
+            {
+                lock (this)
+                {
+                    if (_needToQuit || _pathsToScan.Count > 0)
+                    {
+                        _hasWorkEvent.Set();
+                    }
+                    else
+                    {
+                        _hasWorkEvent.Reset();
+                    }
+                }
             }
 
             private void AddDirectoryContents(string path)
@@ -43,7 +57,7 @@ namespace DevSync
             private void DoWork()
             {
                 string path;
-                lock (_hasWorkConditionVariable)
+                lock (_pathsToScan)
                 {
                     path = _pathsToScan.FirstOrDefault();
                     if (path == null)
@@ -53,7 +67,7 @@ namespace DevSync
 
                     _pathsToScan.Remove(path);
                 }
-
+                UpdateHasWork();
                 AddDirectoryContents(path);
             }
 
@@ -61,7 +75,7 @@ namespace DevSync
             {
                 while (!_needToQuit)
                 {
-                    _hasWorkConditionVariable.WaitForCondition(() => _needToQuit || _pathsToScan.Count > 0);
+                    _hasWorkEvent.WaitOne();
                     DoWork();
                 }
             }
@@ -74,29 +88,30 @@ namespace DevSync
             public void Stop()
             {
                 _cancellationTokenSource.Cancel();
-                lock (_hasWorkConditionVariable)
+                lock (_pathsToScan)
                 {
                     _pathsToScan.Clear();
                     _needToQuit = true;
                 }
-                _hasWorkConditionVariable.Notify();
+                UpdateHasWork();
             }
 
             public void Add(string path)
             {
-                lock (_hasWorkConditionVariable)
+                lock (_pathsToScan)
                 {
                     _pathsToScan.Add(path);
                 }
-                _hasWorkConditionVariable.Notify();
+                UpdateHasWork();
             }
 
             public void Clear()
             {
-                lock (_hasWorkConditionVariable)
+                lock (_pathsToScan)
                 {
                     _pathsToScan.Clear();
                 }
+                UpdateHasWork();
             }
         }
     }

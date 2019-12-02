@@ -1,21 +1,16 @@
 ﻿using System;
+using System.Threading;
 
 namespace DevSyncLib.Logger
 {
     public class ConsoleLogger : ILogger
     {
-        private readonly ConditionVariable _isPausedConditionVariable;
-        private volatile bool _isPaused;
-
-        public ConsoleLogger()
-        {
-            _isPausedConditionVariable = new ConditionVariable();
-        }
+        private readonly ManualResetEvent _noPauseEvent = new ManualResetEvent(true);
 
         public void Log(string text, LogLevel level)
         {
-            _isPausedConditionVariable.WaitForCondition(() => !_isPaused);
-            string toLog = $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}";
+            _noPauseEvent.WaitOne();
+            var toLog = $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}";
             if (level == LogLevel.Error)
             {
                 Console.Error.WriteLine(toLog);
@@ -28,19 +23,12 @@ namespace DevSyncLib.Logger
 
         public void Pause()
         {
-            lock (_isPausedConditionVariable)
-            {
-                _isPaused = true;
-            }
+            _noPauseEvent.Reset();
         }
 
         public void Resume()
         {
-            lock (_isPausedConditionVariable)
-            {
-                _isPaused = false;
-            }
-            _isPausedConditionVariable.Notify();
+            _noPauseEvent.Set();
         }
     }
 }

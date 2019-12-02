@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using DevSyncLib.Command.Compression;
 
@@ -30,8 +31,8 @@ namespace DevSyncLib.Command
             private volatile bool _needToQuit, _needToFlush;
             private Exception _flushException;
 
-            private readonly ConditionVariable _hasWorkConditionVariable;
-            private readonly ConditionVariable _flushConditionVariable;
+            private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
+            private readonly ManualResetEvent _noFlushEvent = new ManualResetEvent(true);
 
             private int _chunkLength;
             private readonly byte[] _chunkBytes = new byte[ChunkSize + LENGTH_SIZE];
@@ -48,8 +49,6 @@ namespace DevSyncLib.Command
             {
                 _stream = stream;
                 _compression = compression;
-                _hasWorkConditionVariable = new ConditionVariable();
-                _flushConditionVariable = new ConditionVariable();
 
                 if (_compression != null)
                 {
@@ -57,12 +56,40 @@ namespace DevSyncLib.Command
                 }
             }
 
+            private void UpdateHasWork()
+            {
+                lock (this)
+                {
+                    if (_needToFlush || _needToQuit)
+                    {
+                        _hasWorkEvent.Set();
+                    }
+                    else
+                    {
+                        _hasWorkEvent.Reset();
+                    }
+
+                    if (_needToFlush)
+                    {
+                        _noFlushEvent.Reset();
+                    }
+                    else
+                    {
+                        _noFlushEvent.Set();
+                    }
+                }
+            }
+
             private void WaitForFlush()
             {
-                _flushConditionVariable.WaitForCondition(() => !_needToFlush);
-                if (_flushException != null)
+                _noFlushEvent.WaitOne();
+                // lock chunk
+                lock (_chunkBytes)
                 {
-                    throw _flushException;
+                    if (_flushException != null)
+                    {
+                        throw _flushException;
+                    }
                 }
             }
 
@@ -96,42 +123,42 @@ namespace DevSyncLib.Command
 
             private void DoWork()
             {
-                if (!_needToFlush)
+                // lock chunk
+                lock (_chunkBytes)
                 {
-                    return;
-                }
+                    if (!_needToFlush)
+                    {
+                        return;
+                    }
 
-                try
-                {
-                    if (_compression != null && _chunkLength >= CompressionThreshold && TryCompress(out var written))
+                    try
                     {
-                        WriteChunk(_chunkCompressedBytes, written, true);
+                        if (_compression != null && _chunkLength >= CompressionThreshold &&
+                            TryCompress(out var written))
+                        {
+                            WriteChunk(_chunkCompressedBytes, written, true);
+                        }
+                        else
+                        {
+                            WriteChunk(_chunkBytes, _chunkLength, false);
+                        }
                     }
-                    else
+                    catch (Exception exception)
                     {
-                        WriteChunk(_chunkBytes, _chunkLength, false);
+                        _flushException = exception;
                     }
+
+                    _flushStopwatch = Stopwatch.StartNew();
+                    _needToFlush = false;
                 }
-                catch (Exception exception)
-                {
-                    _flushException = exception;
-                }
-                _flushStopwatch = Stopwatch.StartNew();
-                lock (_hasWorkConditionVariable)
-                {
-                    lock (_flushConditionVariable)
-                    {
-                        _needToFlush = false;
-                    }
-                }
-                _flushConditionVariable.Notify();
+                UpdateHasWork();
             }
 
             protected void Run()
             {
                 while (!_needToQuit)
                 {
-                    _hasWorkConditionVariable.WaitForCondition(() => _needToQuit || _needToFlush);
+                    _hasWorkEvent.WaitOne();
                     DoWork();
                 }
             }
@@ -143,17 +170,10 @@ namespace DevSyncLib.Command
 
             public void Stop()
             {
-                lock (_hasWorkConditionVariable)
-                {
-                    _needToQuit = true;
-                }
-
+                _needToQuit = true;
                 // wait for current flush
-                lock (this)
-                {
-                    WaitForFlush();
-                }
-                _hasWorkConditionVariable.Notify();
+                WaitForFlush();
+                UpdateHasWork();
             }
 
             public void Flush(byte[] data, int offset, int length)
@@ -164,29 +184,31 @@ namespace DevSyncLib.Command
                 }
 
                 // block other Flushes
-                lock (this)
+                // wait for current flush
+                WaitForFlush();
+                // start new flush
+                // lock chunk
+                lock (_chunkBytes)
                 {
-                    // wait for current flush
-                    WaitForFlush();
-                    // start new flush
                     _flushException = null;
                     _chunkLength = length;
                     Buffer.BlockCopy(data, offset, _chunkBytes, LENGTH_SIZE, _chunkLength);
-                    lock (_hasWorkConditionVariable)
-                    {
-                        lock (_flushConditionVariable)
-                        {
-                            _needToFlush = true;
-                        }
-                    }
-                    _hasWorkConditionVariable.Notify();
+                    _needToFlush = true;
                 }
+                UpdateHasWork();
+            }
+
+            public void Wait()
+            {
+                // wait for current flush
+                WaitForFlush();
             }
         }
 
         public override void Flush()
         {
             FlushChunk();
+            _flusher.Wait();
         }
 
         protected void FlushChunk()
