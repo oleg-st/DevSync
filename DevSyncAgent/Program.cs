@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 
@@ -9,7 +10,8 @@ namespace DevSyncAgent
     {
         static void Main(string[] args)
         {
-            var logger = new FileLogger( Path.Combine(Path.GetTempPath(), "devsync.log"));
+            var assemblyPath = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
+            var logger = new FileLogger(Path.Combine(assemblyPath, "devsync.log"));
             try
             {
                 if (!Console.IsInputRedirected || !Console.IsOutputRedirected)
