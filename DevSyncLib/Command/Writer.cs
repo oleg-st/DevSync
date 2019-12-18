@@ -102,7 +102,7 @@ namespace DevSyncLib.Command
             }
         }
 
-        public bool WriteFsChangeBody(string filename, FsChange fsChange)
+        public bool WriteFsChangeBody(string filename, FsSenderChange fsSenderChange)
         {
             long written = 0;
 
@@ -119,7 +119,7 @@ namespace DevSyncLib.Command
                     if (ex is FileNotFoundException || ex is DirectoryNotFoundException)
                     {
                         // file vanished -> ignore it
-                        fsChange.Expired = true;
+                        fsSenderChange.Expired = true;
                     }
                     else
                     {
@@ -128,19 +128,19 @@ namespace DevSyncLib.Command
                     }
 
                     // cannot read file (sender error)
-                    WriteFsChange(fsChange);
+                    WriteFsChange(fsSenderChange);
                     WriteInt(-1);
                     return false;
                 }
 
                 // length resolved
-                fsChange.Length = fs.Length;
-                WriteFsChange(fsChange);
+                fsSenderChange.Length = fs.Length;
+                WriteFsChange(fsSenderChange);
 
                 int read;
                 do
                 {
-                    if (fsChange.Expired)
+                    if (fsSenderChange.Expired)
                     {
                         // file change is expired -> stop
                         WriteInt(-1);
@@ -169,7 +169,7 @@ namespace DevSyncLib.Command
                 } while (read == BUFFER_LENGTH);
 
                 // check written
-                if (written != fsChange.Length)
+                if (written != fsSenderChange.Length)
                 {
                     // file length mismatch
                     WriteInt(-1);

@@ -10,14 +10,14 @@ namespace DevSyncLib.Command
     {
         public override short Signature => 5;
 
-        private List<FsChange> _changes;
+        private List<FsSenderChange> _changes;
 
         // max items body size in chunk (soft limit)
         public const int ChangesMaxSize = 100 * 1024 * 1024;
         // max items in chunk
         public const int ChangesMaxCount = 2500;
 
-        public List<FsChange> SentChanges;
+        public List<FsSenderChange> SentChanges;
         public long SentChangesSize;
 
         protected Reader Reader;
@@ -29,11 +29,11 @@ namespace DevSyncLib.Command
             Reader = reader;
         }
 
-        public void SetChanges(IEnumerable<FsChange> changes)
+        public void SetChanges(IEnumerable<FsSenderChange> changes)
         {
             if (_changes == null)
             {
-                _changes = new List<FsChange>(ChangesMaxCount);
+                _changes = new List<FsSenderChange>(ChangesMaxCount);
             }
             else
             {
@@ -41,6 +41,8 @@ namespace DevSyncLib.Command
             }
             _changes.AddRange(changes.Take(ChangesMaxCount));
         }
+
+        public bool HasChanges => _changes.Count > 0;
 
         private FsChangeResult ApplyFsChange(FsChange fsChange, FileMaskList excludeList)
         {
@@ -226,7 +228,7 @@ namespace DevSyncLib.Command
                     {
                         // delete and retry
                         var fsRemoveChangeResult = ApplyFsChange(
-                            FsChange.CreateRemove(fsChange.Path),
+                            new FsChange(FsChangeType.Remove, fsChange.Path),
                                 excludeList);
                         if (fsRemoveChangeResult.ResultCode == FsChangeResultCode.Ok)
                         {
@@ -254,7 +256,7 @@ namespace DevSyncLib.Command
         {
             if (SentChanges == null)
             {
-                SentChanges = new List<FsChange>(ChangesMaxCount);
+                SentChanges = new List<FsSenderChange>(ChangesMaxCount);
             }
             else
             {

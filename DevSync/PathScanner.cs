@@ -46,7 +46,7 @@ namespace DevSync
                         false, _cancellationTokenSource.Token);
                     foreach (var srcEntry in scanDirectory.ScanPath(_sender._srcPath, path))
                     {
-                        _sender.AddChange(FsChange.CreateChange(srcEntry.Path));
+                        _sender.AddChange(FsSenderChange.CreateChange(srcEntry.Path));
                     }
                 }
                 catch (OperationCanceledException)

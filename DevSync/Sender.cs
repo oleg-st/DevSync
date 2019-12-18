@@ -21,7 +21,7 @@ namespace DevSync
 
         private readonly FileMaskList _excludeList;
 
-        private readonly Dictionary<string, FsChange> _changes;
+        private readonly Dictionary<string, FsSenderChange> _changes;
         private readonly AgentStarter _agentStarter;
 
         private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
@@ -51,7 +51,7 @@ namespace DevSync
                 _timeSpan = TimeSpan.Zero;
             }
 
-            public void Report(List<FsChange> changes, long size, TimeSpan timeSpan)
+            public void Report(List<FsSenderChange> changes, long size, TimeSpan timeSpan)
             {
                 _totalCount += changes.Count;
                 _totalSize += size;
@@ -100,7 +100,7 @@ namespace DevSync
             _excludeList = new FileMaskList(); 
             _excludeList.SetList(syncOptions.ExcludeList);
 
-            _changes = new Dictionary<string, FsChange>();
+            _changes = new Dictionary<string, FsSenderChange>();
             _needToScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
@@ -216,7 +216,7 @@ namespace DevSync
                             {
                                 changesSize += srcEntry.Length;
                             }
-                            AddChange(FsChange.CreateChange(srcEntry), false);
+                            AddChange(FsSenderChange.CreateChange(srcEntry), false);
                         }
                     }
 
@@ -233,7 +233,7 @@ namespace DevSync
                     if (!_changes.ContainsKey(destEntry.Path))
                     {
                         itemsCount++;
-                        AddChange(FsChange.CreateRemove(destEntry.Path), false);
+                        AddChange(FsSenderChange.CreateRemove(destEntry.Path), false);
                     }
                 }
             }
@@ -244,20 +244,20 @@ namespace DevSync
             UpdateHasWork();
         }
         
-        private void AddChange(FsChange fsChange, bool notifyHasWork = true, bool withSubdirectories = false)
+        private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
             lock (_changes)
             {
-                if (_changes.TryGetValue(fsChange.Path, out var oldFsChange))
+                if (_changes.TryGetValue(fsSenderChange.Path, out var oldFsChange))
                 {
                     oldFsChange.Expired = true;
                 }
-                _changes[fsChange.Path] = fsChange;
+                _changes[fsSenderChange.Path] = fsSenderChange;
             }
 
             if (withSubdirectories)
             {
-                _pathScanner.Add(fsChange.Path);
+                _pathScanner.Add(fsSenderChange.Path);
             }
 
             if (notifyHasWork)
@@ -289,7 +289,7 @@ namespace DevSync
             {
                 return;
             }
-            AddChange(FsChange.CreateChange(path), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
+            AddChange(FsSenderChange.CreateChange(path), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
         }
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
@@ -311,7 +311,7 @@ namespace DevSync
                 return;
             }
 
-            AddChange(FsChange.CreateRemove(path));
+            AddChange(FsSenderChange.CreateRemove(path));
         }
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
@@ -335,7 +335,7 @@ namespace DevSync
                 // old file is not excluded -> delete it
                 if (!_excludeList.IsMatch(oldPath))
                 {
-                    AddChange(FsChange.CreateRemove(oldPath));
+                    AddChange(FsSenderChange.CreateRemove(oldPath));
                 }
 
                 // both files are excluded -> do nothing
@@ -345,12 +345,12 @@ namespace DevSync
                 // old file is excluded -> send change with withSubdirectories
                 if (_excludeList.IsMatch(oldPath))
                 {                    
-                    AddChange(FsChange.CreateChange(path), withSubdirectories: true);
+                    AddChange(FsSenderChange.CreateChange(path), withSubdirectories: true);
                 }
                 else
                 {
                     // both files are not excluded -> send rename
-                    AddChange(FsChange.CreateRename(path, oldPath));
+                    AddChange(FsSenderChange.CreateRename(path, oldPath));
                 }
             }
         }
@@ -440,7 +440,17 @@ namespace DevSync
                 {
                     return true;
                 }
-                _applyRequest.SetChanges(_changes.Values);
+
+                // filter not ready changes
+                _applyRequest.SetChanges(_changes.Values.Where(x => x.IsReady));
+            }
+
+            // nothing to send -> has not ready changes
+            if (!_applyRequest.HasChanges)
+            {
+                // waiting for change is getting ready or we get new ready changes
+                Thread.Sleep(FsSenderChange.WaitForReadyTimeoutMs);
+                return true;
             }
 
             if (!_isSending)
@@ -482,7 +492,7 @@ namespace DevSync
                                             $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
                                     }
                                 }
-                                AddChange(FsChange.CreateChange(fsChange.Path), false, withSubdirectories);
+                                AddChange(FsSenderChange.CreateChange(fsChange.Path), false, withSubdirectories);
                             }
                         }
                     }
