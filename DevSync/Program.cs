@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using CommandLine;
 using CommandLine.Text;
 using DevSyncLib;
@@ -39,7 +40,8 @@ namespace DevSync
         static void PrintHelp(ParserResult<CommandLineOptions> parserResult)
         {
             var optionsUsage = HelpText.AutoBuild(parserResult, text => text, example => example);
-            optionsUsage.Heading = "DevSync";
+            var version = Assembly.GetCallingAssembly().GetName().Version;
+            optionsUsage.Heading = $"DevSync {version.Major}.{version.Minor}";
             optionsUsage.Copyright = "by Oleg Stepanischev";
             optionsUsage.AdditionalNewLineAfterOption = false;
             optionsUsage.AddDashesToOption = true;
