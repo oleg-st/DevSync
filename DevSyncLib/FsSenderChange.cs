@@ -19,10 +19,10 @@ namespace DevSyncLib
             return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldPath} -> " : "")}{Path}{(ChangeType == FsChangeType.Change && Length >= 0 ? $", {Length}" : "")}";
         }
 
-        public FsSenderChange(FsChangeType changeType, string path) : base(changeType, path)
+        private FsSenderChange(FsChangeType changeType, string path, bool isReady = true) : base(changeType, path)
         {
-            // Delay sending change to combine multiple modifications of a same file
-            if (changeType == FsChangeType.Change)
+            // start stopwatch if not ready
+            if (!isReady)
             {
                 _readyStopwatch = Stopwatch.StartNew();
             }
@@ -57,7 +57,8 @@ namespace DevSyncLib
 
         public static FsSenderChange CreateChange(string path)
         {
-            return new FsSenderChange(FsChangeType.Change, path)
+            // Delay sending change to combine multiple modifications of a same file
+            return new FsSenderChange(FsChangeType.Change, path, false)
             {
                 NeedToResolve = true
             };
