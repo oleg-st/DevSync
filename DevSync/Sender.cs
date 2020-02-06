@@ -74,7 +74,7 @@ namespace DevSync
                 }
 
                 _logger.Log(_totalCount == 1
-                    ? _lastChange
+                    ? $"Sent {_lastChange} in {(int)_timeSpan.TotalMilliseconds} ms"
                     : $"Sent {_totalCount} changes, {PrettySize(_totalSize)} in {(int)_timeSpan.TotalMilliseconds} ms");
 
                 _lastChange = "";
@@ -246,6 +246,12 @@ namespace DevSync
         
         private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
+            // ignore empty path
+            if (string.IsNullOrEmpty(fsSenderChange.Path))
+            {
+                return;
+            }
+
             lock (_changes)
             {
                 if (_changes.TryGetValue(fsSenderChange.Path, out var oldFsChange))
@@ -273,13 +279,13 @@ namespace DevSync
         
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
+            var path = GetPath(e.FullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (e.FullPath == _srcPath)
+            if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
-            var path = GetPath(e.FullPath);
             if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GIT_INDEX_LOCK_FILENAME)
             {
                 SetGitIsBusy(true);
@@ -294,13 +300,13 @@ namespace DevSync
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
         {
+            var path = GetPath(e.FullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (e.FullPath == _srcPath)
+            if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
-            var path = GetPath(e.FullPath);
             if (_gitIsBusy && path == GIT_INDEX_LOCK_FILENAME)
             {
                 SetGitIsBusy(false);
@@ -316,14 +322,14 @@ namespace DevSync
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
         {
+            var path = GetPath(e.FullPath);
+            var oldPath = GetPath(e.OldFullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (e.FullPath == _srcPath || e.OldFullPath == _srcPath)
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(oldPath))
             {
                 return;
             }
 
-            var path = GetPath(e.FullPath);
-            var oldPath = GetPath(e.OldFullPath);
             if (_gitIsBusy && oldPath == GIT_INDEX_LOCK_FILENAME)
             {
                 SetGitIsBusy(false);

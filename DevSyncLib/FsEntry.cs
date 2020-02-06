@@ -14,7 +14,21 @@ namespace DevSyncLib
 
         public static string NormalizePath(string path)
         {
-            return path.Replace('\\', '/');
+            var normalizedPath = path.Replace('\\', '/');
+            // remove all "./" from beginning
+            int index = 0;
+            int length = normalizedPath.Length;
+            while (index < length && normalizedPath[index] == '.' && 
+                   (index + 1 >= length || normalizedPath[index + 1] == '/'))
+            {
+                index++;
+                // remove '/'
+                while (index < length && normalizedPath[index] == '/')
+                {
+                    index++;
+                }
+            }
+            return normalizedPath.Substring(index);
         }
 
         private bool CompareDates(DateTime dt1, DateTime dt2)
