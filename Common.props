@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
     <Authors>Oleg Stepanischev</Authors>
-    <Company>Oleg Stepanischev</Company>
-    <AssemblyVersion>0.17</AssemblyVersion>
-    <FileVersion>0.17</FileVersion>
-    <Version>0.17</Version>
+    <Version>0.18</Version>
+    <Copyright>$(Authors)</Copyright>
+    <Company>$(Authors)</Company>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
   </PropertyGroup>
 </Project>

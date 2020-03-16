@@ -245,13 +245,13 @@ namespace DevSync
                 InitEncryption(connectionInfo);
 
                 var sshClient = new SshClient(connectionInfo);
-                sshClient.Connect();
                 sshClient.ErrorOccurred += (sender, args) =>
                 {
                     Logger.Log(args.Exception.Message, LogLevel.Error);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 };
+                sshClient.Connect();
 
                 if (DeployAgent)
                 {
