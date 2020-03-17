@@ -201,20 +201,20 @@ namespace DevSync
              * https://security.stackexchange.com/questions/180544/is-there-a-list-of-weak-ssh-ciphers
              */
             connectionInfo.Encryptions.Clear();
-            // aes-ctr (partially native with CtrCipherMode, most secure)
+            // aes-ctr (most secure)
             connectionInfo.Encryptions["aes128-ctr"] =
-                new CipherInfo(128, (key, iv) => new NativeAesCipherCtr(key, iv));
+                new CipherInfo(128, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
             connectionInfo.Encryptions["aes192-ctr"] =
-                new CipherInfo(192, (key, iv) => new NativeAesCipherCtr(key, iv));
+                new CipherInfo(192, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
             connectionInfo.Encryptions["aes256-ctr"] =
-                new CipherInfo(256, (key, iv) => new NativeAesCipherCtr(key, iv));
-            // aes-cbc (fully native, fastest but less secure)
+                new CipherInfo(256, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
+            // aes-cbc (less secure)
             connectionInfo.Encryptions["aes128-cbc"]
-                = new CipherInfo(128, (key, iv) => new NativeAesCipherCbc(key, iv));
+                = new CipherInfo(128, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
             connectionInfo.Encryptions["aes192-cbc"]
-                = new CipherInfo(192, (key, iv) => new NativeAesCipherCbc(key, iv));
+                = new CipherInfo(192, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
             connectionInfo.Encryptions["aes256-cbc"]
-                = new CipherInfo(256, (key, iv) => new NativeAesCipherCbc(key, iv));
+                = new CipherInfo(256, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
             // not recommended
             connectionInfo.Encryptions["arcfour256"]
                 = new CipherInfo(256, (key, iv) => new Arc4Cipher(key, true));
