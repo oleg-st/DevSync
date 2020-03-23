@@ -31,6 +31,10 @@
     <ProjectReference Include="..\DevSyncLib\DevSyncLib.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
   <ItemGroup>
     <Reference Include="Renci.SshNet">
       <HintPath>..\Libs\Renci.SshNet.dll</HintPath>
