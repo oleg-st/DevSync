@@ -134,56 +134,66 @@ namespace DevSyncLib.Command
             {
                 long written = 0;
                 int chunkSize;
-                do
+                try
                 {
-                    chunkSize = ReadInt();
-                    if (chunkSize < 0)
+                    do
                     {
-                        // error occurred in sender
-                        return false;
-                    }
-
-                    var remain = chunkSize;
-                    while (remain > 0)
-                    {
-                        var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
-                        if (read <= 0)
+                        chunkSize = ReadInt();
+                        if (chunkSize < 0)
                         {
-                            throw new EndOfStreamException($"Premature end of stream {remain}, {chunkSize}, {read})");
+                            // error occurred in sender
+                            return false;
                         }
 
-                        if (written == 0)
+                        var remain = chunkSize;
+                        while (remain > 0)
                         {
-                            var directoryName = Path.GetDirectoryName(path);
-                            Directory.CreateDirectory(directoryName);
-                            tempPath = Path.Combine(directoryName,
-                                "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
-                            fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-                        }
-
-                        if (PlatformHasChmod && shebangPosition < ShebangLength)
-                        {
-                            for (var i = 0; i < read;)
+                            var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
+                            if (read <= 0)
                             {
-                                if (_buffer[i++] != ShebangBytes[shebangPosition++])
+                                throw new EndOfStreamException(
+                                    $"Premature end of stream {remain}, {chunkSize}, {read})");
+                            }
+
+                            if (written == 0)
+                            {
+                                var directoryName = Path.GetDirectoryName(path);
+                                Directory.CreateDirectory(directoryName);
+                                tempPath = Path.Combine(directoryName,
+                                    "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
+                                fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                            }
+
+                            if (PlatformHasChmod && shebangPosition < ShebangLength)
+                            {
+                                for (var i = 0; i < read;)
                                 {
-                                    // no shebang
-                                    shebangPosition = int.MaxValue;
-                                    break;
-                                }
-                                if (shebangPosition == ShebangLength)
-                                {
-                                    makeExecutable = true;
-                                    break;
+                                    if (_buffer[i++] != ShebangBytes[shebangPosition++])
+                                    {
+                                        // no shebang
+                                        shebangPosition = int.MaxValue;
+                                        break;
+                                    }
+
+                                    if (shebangPosition == ShebangLength)
+                                    {
+                                        makeExecutable = true;
+                                        break;
+                                    }
                                 }
                             }
-                        }
 
-                        fs?.Write(_buffer, 0, read);
-                        written += read;
-                        remain -= read;
-                    }
-                } while (chunkSize > 0);
+                            fs?.Write(_buffer, 0, read);
+                            written += read;
+                            remain -= read;
+                        }
+                    } while (chunkSize > 0);
+                }
+                catch (Exception)
+                {
+                    SkipFsChangeBody();
+                    throw;
+                }
 
                 bodyReadSuccess = written == fsChange.Length;
                 if (bodyReadSuccess && makeExecutable)
@@ -204,11 +214,6 @@ namespace DevSyncLib.Command
                 }
 
                 return bodyReadSuccess;
-            }
-            catch (Exception)
-            {
-                SkipFsChangeBody();
-                throw;
             }
             finally
             {
