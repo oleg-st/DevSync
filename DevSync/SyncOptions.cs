@@ -87,7 +87,8 @@ namespace DevSync
                 switch (key)
                 {
                     case "local":
-                        syncOptions.SourcePath = value;
+                        // local path may be relative to directory of filename
+                        syncOptions.SourcePath = Path.GetFullPath(value, Path.GetDirectoryName(filename));
                         break;
                     case "remote":
                         syncOptions.DestinationPath = value;
