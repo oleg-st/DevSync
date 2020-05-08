@@ -20,6 +20,8 @@ namespace DevSyncAgent
                     return;
                 }
 
+                PosixExtensions.SetupUserMask();
+
                 var packetStream = new PacketStream(Console.OpenStandardInput(), Console.OpenStandardOutput(), logger);
                 var commandRunner = new CommandRunner(logger);
                 while (true)

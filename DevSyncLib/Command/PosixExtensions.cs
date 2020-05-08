@@ -10,7 +10,24 @@ namespace DevSyncLib.Command
         [DllImport("libc", EntryPoint = "fchmod")]
         internal static extern int FChmod(SafeFileHandle fd, int mode);
 
+        [DllImport("libc", EntryPoint = "umask")]
+        private static extern uint umask(uint mask);
+
         private static volatile bool _noChmod;
+
+        public static bool SetupUserMask()
+        {
+            try
+            {
+                // 0022
+                umask(0b0_010_010);
+                return true;
+            }
+            catch (Exception) // no libc or no umask
+            {
+                return false;
+            }
+        }
 
         public static int ChangeMode(this FileStream fileStream, int mode)
         {
