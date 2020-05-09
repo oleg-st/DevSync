@@ -565,6 +565,10 @@ namespace DevSync
                     }
                     needToWait = ex.NeedToWait;
                 }
+                catch (SyncInterruptException)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     if (_needToQuit)

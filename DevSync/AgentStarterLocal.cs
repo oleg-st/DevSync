@@ -1,30 +1,53 @@
-﻿using System.IO;
+﻿using System.Diagnostics;
+using System.IO;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
-using Medallion.Shell;
 
 namespace DevSync
 {
     public class AgentStarterLocal: AgentStarter
     {
-        private Command _command;
+        private Process _process;
 
         protected override void Cleanup()
         {
-            _command?.Kill();
+            try
+            {
+                // the try-catch is because Kill() will throw if the process is disposed
+                _process?.Kill();
+            }
+            catch
+            {
+                // ignore errors
+            }
         }
 
         public override void DoStart()
         {
             var agentPath = Path.Combine(Path.GetDirectoryName(typeof(PacketStream).Assembly.Location), "DevSyncAgent.dll");
-            _command = Command.Run("dotnet", agentPath);
-            PacketStream = new PacketStream(_command.StandardOutput.BaseStream, _command.StandardInput.BaseStream, Logger);
-            _command.Task.ContinueWith(r =>
+            var processStartInfo = new ProcessStartInfo
             {
-                SetAgentExitCode(r.Result.ExitCode, r.Result.StandardError);
+                FileName = "dotnet",
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            };
+            /*
+             * COMPlus_EnableDiagnostics turns off clr-debug-pipe
+             * https://github.com/dotnet/coreclr/blob/master/Documentation/building/debugging-instructions.md
+             */
+            processStartInfo.Environment["COMPlus_EnableDiagnostics"] = "0";
+            processStartInfo.ArgumentList.Add(agentPath);
+            _process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true };
+            _process.Exited += (sender, args) =>
+            {
+                SetAgentExitCode(_process.ExitCode, _process.StandardError.ReadToEnd());
                 Cleanup();
                 IsStarted = false;
-            });
+            };
+            _process.Start();
+            PacketStream = new PacketStream(_process.StandardOutput.BaseStream, _process.StandardInput.BaseStream, Logger);
         }
 
         public AgentStarterLocal(ILogger logger) : base(logger)

@@ -30,6 +30,9 @@ namespace DevSync
             [Option("external-ssh", Default = false, HelpText = "Use external ssh command")]
             public bool ExternalSsh { get; set; }
 
+            [Option("authorize-key", Default = false, HelpText = "Use password authentication, generate RSA-4096 key pair (if necessary) and setup public key authentication")]
+            public bool AuthorizeKey { get; set; }
+
             [Option("realsync", Default = null, HelpText = "Realsync source directory (with .realsync file)")]
             public string RealsyncPath { get; set; }
 
@@ -88,6 +91,7 @@ namespace DevSync
 
             syncOptions.DeployAgent = options.DeployAgent;
             syncOptions.ExternalSsh = options.ExternalSsh;
+            syncOptions.AuthorizeKey = options.AuthorizeKey;
             return syncOptions;
         }
 

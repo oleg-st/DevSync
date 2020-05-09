@@ -20,6 +20,8 @@ namespace DevSync
 
         public bool ExternalSsh { get; set; }
 
+        public bool AuthorizeKey { get; set; }
+
         public SyncOptions()
         {
             KeyFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh/id_rsa");
@@ -124,7 +126,7 @@ namespace DevSync
 
         public override string ToString()
         {
-            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}";
+            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key": "")}";
         }
     }
 }

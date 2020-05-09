@@ -1,24 +1,24 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
-using DevSync.Cryptography;
+using DevSync.SshStarter;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
-using Renci.SshNet;
-using Renci.SshNet.Common;
-using Renci.SshNet.Security.Cryptography.Ciphers;
-using Renci.SshNet.Security.Cryptography.Ciphers.Modes;
+using ICSharpCode.SharpZipLib.Tar;
 
 namespace DevSync
 {
     public class AgentStarterSsh : AgentStarter
     {
-        private SshClient _sshClient;
-        private SshCommand _sshCommand;
+        private ISshStarter _sshStarter;
+        private ISshStarterCommand _sshStarterCommand;
 
         private string _host, _username, _keyFilePath;
+
+        private AuthenticationMethodMode _authenticationMethodMode;
 
         public string Host
         {
@@ -46,14 +46,15 @@ namespace DevSync
             set
             {
                 _keyFilePath = value;
-                _privateKeyFile = null;
                 IsStarted = false;
             }
         }
 
         public bool DeployAgent { get; set; }
 
-        private PrivateKeyFile _privateKeyFile;
+        public bool AuthorizeKey { get; set; }
+
+        public bool ExternalSsh { get; set; }
 
         /*
          * Occurs when shell cannot find dotnet command
@@ -87,12 +88,12 @@ namespace DevSync
         {
             base.Cleanup();
             IsStarted = false;
-            SshClient sshClient;
-            SshCommand sshCommand;
+            ISshStarter sshClient;
+            ISshStarterCommand sshCommand;
             lock (this)
             {
-                sshClient = _sshClient;
-                sshCommand = _sshCommand;
+                sshClient = _sshStarter;
+                sshCommand = _sshStarterCommand;
             }
 
             sshCommand?.Dispose();
@@ -103,12 +104,12 @@ namespace DevSync
         {
             base.Cleanup();
             IsStarted = false;
-            SshClient sshClient;
-            SshCommand sshCommand;
+            ISshStarter sshClient;
+            ISshStarterCommand sshCommand;
             lock (this)
             {
-                sshClient = _sshClient;
-                sshCommand = _sshCommand;
+                sshClient = _sshStarter;
+                sshCommand = _sshStarterCommand;
             }
 
             Task.Run(() =>
@@ -118,144 +119,148 @@ namespace DevSync
             });
         }
 
-        protected void DoDeployAgent(SshClient sshClient, string path)
+        protected byte[] CreateTarForAgent()
+        {
+            var files = new[]
+            {
+                "DevSyncAgent.dll",
+                "DevSyncAgent.deps.json",
+                "DevSyncAgent.runtimeconfig.json",
+                "DevSyncLib.dll",
+                "DevSyncLib.deps.json"
+            };
+
+            using var memoryStream = new MemoryStream();
+            using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
+            {
+                var assemblyPath = Path.GetDirectoryName(typeof(PacketStream).Assembly.Location);
+
+                foreach (var filename in files)
+                {
+                    var tarEntry = TarEntry.CreateEntryFromFile(Path.Combine(assemblyPath, filename));
+                    tarEntry.Name = Path.GetFileName(filename);
+                    tarArchive.WriteEntry(tarEntry, true);
+                }
+            }
+
+            return memoryStream.ToArray();
+        }
+
+        protected void DoDeployAgent(ISshStarter sshStarter, string path)
         {
             var sw = Stopwatch.StartNew();
             var tarBytes = CreateTarForAgent();
-            using var sshCommand = sshClient.CreateCommand($"mkdir -p {path} && tar xf - -C {path}");
-            var asyncResult = sshCommand.BeginExecute();
-            using (sshCommand.InputStream)
+            using var sshCommand = sshStarter.RunCommand($"mkdir -p {path} && tar xf - -C {path}");
+            try
             {
-                sshCommand.InputStream.Write(tarBytes);
+                using (sshCommand.InputStream)
+                {
+                    sshCommand.InputStream.Write(tarBytes, 0, tarBytes.Length);
+                }
             }
-
-            sshCommand.EndExecute(asyncResult);
-            if (sshCommand.ExitStatus != 0)
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (EndOfStreamException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+            sshCommand.Wait();
+            if (sshCommand.ExitCode != 0)
             {
                 throw new SyncException(
-                    $"Agent deploy failed {path} ({sshCommand.ExitStatus}, {sshCommand.Error.Trim()})");
+                    $"Agent deploy failed {path} ({sshCommand.ExitCode}, {sshCommand.Error.Trim()})");
             }
 
             Logger.Log($"Agent deployed in {sw.ElapsedMilliseconds} ms");
         }
 
-        private string GetKeyPassPhrase()
+        protected void DoAuthorizeKey(ISshStarter sshStarter)
         {
-            Logger.Pause();
-            Console.Write("Enter key passphrase: ");
-            var keyPassPhrase = "";
-            do
+            var publicKeyPath = _keyFilePath + ".pub";
+            if (!File.Exists(publicKeyPath) || !File.Exists(_keyFilePath))
             {
-                var key = Console.ReadKey(true);
-                if (key.Key == ConsoleKey.Enter)
+                Logger.Log("Generating public/private rsa key pair.");
+                var sshKeyGenerator = new SshRsaKeyGenerator();
+                using (var fs = new FileStream(_keyFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    break;
+                    fs.Write(Encoding.ASCII.GetBytes(sshKeyGenerator.ToPrivateKey()));
+                    // 0600, rw-------
+                    fs.ChangeMode(0b110_000_000);
                 }
-
-                if (key.Key != ConsoleKey.Backspace)
-                {
-                    keyPassPhrase += key.KeyChar;
-                }
-                else if (key.Key == ConsoleKey.Backspace && keyPassPhrase.Length > 0)
-                {
-                    keyPassPhrase = keyPassPhrase.Substring(0, keyPassPhrase.Length - 1);
-                }
-            } while (true);
-
-            Console.WriteLine();
-            Logger.Resume();
-            return keyPassPhrase;
-        }
-
-        private PrivateKeyFile GetPrivateKeyFile()
-        {
-            if (_privateKeyFile == null)
+                Logger.Log($"Your identification has been saved in {_keyFilePath}");
+                File.WriteAllText(publicKeyPath, sshKeyGenerator.ToRfcPublicKey($"{Environment.UserName}@{Environment.MachineName}") + Environment.NewLine);
+                Logger.Log($"Your public key has been saved in {publicKeyPath}");
+            }
+            var publicKey = File.ReadAllText(publicKeyPath).Trim();
+            var sw = Stopwatch.StartNew();
+            using var sshCommand = sshStarter.RunCommand($"mkdir -p .ssh && chmod 700 .ssh && echo {publicKey} >> .ssh/authorized_keys && chmod 600 .ssh/authorized_keys");
+            sshCommand.Wait();
+            if (sshCommand.ExitCode != 0)
             {
-
-                if (!File.Exists(_keyFilePath))
-                {
-                    throw new SyncException(
-                        $"Your ssh private key is not found: {_keyFilePath}. Use ssh-keygen to create");
-                }
-
-                try
-                {
-                    _privateKeyFile = new PrivateKeyFile(_keyFilePath);
-                }
-                catch (SshPassPhraseNullOrEmptyException)
-                {
-                    _privateKeyFile = new PrivateKeyFile(_keyFilePath, GetKeyPassPhrase());
-                }
+                throw new SyncException(
+                    $"Failed to add public key to authorized keys ({sshCommand.ExitCode}, {sshCommand.Error.Trim()})");
             }
 
-            return _privateKeyFile;
+            Logger.Log($"Public key added to authorized keys in {sw.ElapsedMilliseconds} ms");
         }
 
-        private void InitEncryption(ConnectionInfo connectionInfo)
+        private ISshStarter CreateSshStarter()
         {
-            /*
-             * Sorted by performance / strength / OpenSSH preferences
-             *
-             * OpenSSH cipher performance
-             * https://possiblelossofprecision.net/?p=2255
-             * https://security.stackexchange.com/questions/180544/is-there-a-list-of-weak-ssh-ciphers
-             */
-            connectionInfo.Encryptions.Clear();
-            // aes-ctr (most secure)
-            connectionInfo.Encryptions["aes128-ctr"] =
-                new CipherInfo(128, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
-            connectionInfo.Encryptions["aes192-ctr"] =
-                new CipherInfo(192, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
-            connectionInfo.Encryptions["aes256-ctr"] =
-                new CipherInfo(256, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Ctr));
-            // aes-cbc (less secure)
-            connectionInfo.Encryptions["aes128-cbc"]
-                = new CipherInfo(128, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
-            connectionInfo.Encryptions["aes192-cbc"]
-                = new CipherInfo(192, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
-            connectionInfo.Encryptions["aes256-cbc"]
-                = new CipherInfo(256, (key, iv) => AesCipherFactory.Create(key, iv, AesCipherFactory.Mode.Cbc));
-            // not recommended
-            connectionInfo.Encryptions["arcfour256"]
-                = new CipherInfo(256, (key, iv) => new Arc4Cipher(key, true));
-            connectionInfo.Encryptions["arcfour"]
-                = new CipherInfo(128, (key, iv) => new Arc4Cipher(key, false));
-            connectionInfo.Encryptions["arcfour128"]
-                = new CipherInfo(128, (key, iv) => new Arc4Cipher(key, true));
-            connectionInfo.Encryptions["blowfish-cbc"]
-                = new CipherInfo(128, (key, iv) => new BlowfishCipher(key, new CbcCipherMode(iv), null));
-            connectionInfo.Encryptions["cast128-cbc"]
-                = new CipherInfo(128, (key, iv) => new CastCipher(key, new CbcCipherMode(iv), null));
-            connectionInfo.Encryptions["3des-cbc"]
-                = new CipherInfo(192, (key, iv) => new NativeTripleDesCipherCbc(key, iv));
+            ISshStarter sshStarter;
+            if (ExternalSsh)
+            {
+                sshStarter = new SshStarter.External.SshStarter();
+            }
+            else
+            {
+                sshStarter = new SshStarter.Internal.SshStarter(Logger);
+            }
+            sshStarter.Host = _host;
+            sshStarter.KeyFilePath = _keyFilePath;
+            sshStarter.Username = _username;
+            sshStarter.AuthenticationMode = _authenticationMethodMode;
+            return sshStarter;
         }
 
         public override void DoStart()
         {
+            restart:
+            _authenticationMethodMode = AuthenticationMethodMode.Key;
+
+            retry:
             try
             {
                 Cleanup();
-                var connectionInfo = new ConnectionInfo(_host, _username,
-                    new PrivateKeyAuthenticationMethod(_username, GetPrivateKeyFile())
-                )
+                if (_authenticationMethodMode == AuthenticationMethodMode.Key && !File.Exists(KeyFilePath))
                 {
-                    RetryAttempts = int.MaxValue,
-                    Timeout = new TimeSpan(0, 0, 20)
-                };
-                InitEncryption(connectionInfo);
-
-                var sshClient = new SshClient(connectionInfo);
-                sshClient.ErrorOccurred += (sender, args) =>
+                    if (!AuthorizeKey)
+                    {
+                        throw new SyncException($"Your ssh private key is not found: {KeyFilePath}. Use ssh-keygen to generate key pair or use --authorize-key option");
+                    }
+                    _authenticationMethodMode = AuthenticationMethodMode.Password;
+                }
+                var sshStarter = CreateSshStarter();
+                sshStarter.OnConnectError += (sender, args) =>
                 {
-                    Logger.Log(args.Exception.Message, LogLevel.Error);
+                    Logger.Log(args.Error, LogLevel.Error);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 };
-                sshClient.Connect();
+                sshStarter.Connect();
+
+                if (_authenticationMethodMode == AuthenticationMethodMode.Password && AuthorizeKey)
+                {
+                    DoAuthorizeKey(sshStarter);
+                    AuthorizeKey = false;
+                    goto restart;
+                }
 
                 if (DeployAgent)
                 {
-                    DoDeployAgent(sshClient, DeployPath);
+                    DoDeployAgent(sshStarter, DeployPath);
                 }
 
                 /*
@@ -263,25 +268,30 @@ namespace DevSync
                  * https://github.com/dotnet/coreclr/blob/master/Documentation/building/debugging-instructions.md
                  */
                 var sshCommand =
-                    sshClient.CreateCommand($"COMPlus_EnableDiagnostics=0 dotnet {DeployPath}/DevSyncAgent.dll");
-
-                sshCommand.BeginExecute(ar =>
+                    sshStarter.RunCommand($"COMPlus_EnableDiagnostics=0 dotnet {DeployPath}/DevSyncAgent.dll");
+                sshCommand.OnExit += (sender, args) =>
                 {
-                    SetAgentExitCode(sshCommand.ExitStatus, sshCommand.Error);
+                    SetAgentExitCode(sshCommand.ExitCode, sshCommand.Error);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
-                });
-
+                };
                 PacketStream = new PacketStream(sshCommand.OutputStream, sshCommand.InputStream, Logger);
                 lock (this)
                 {
-                    _sshClient = sshClient;
-                    _sshCommand = sshCommand;
+                    _sshStarter = sshStarter;
+                    _sshStarterCommand = sshCommand;
                 }
             }
-            catch (SshAuthenticationException ex)
+            catch (SshStarterAuthenticationException ex)
             {
-                throw new SyncException(ex.Message);
+                if (!AuthorizeKey)
+                {
+                    throw new SyncException(ex.Message);
+                }
+                Logger.Log(ex.Message, LogLevel.Error);
+                // fallback to password
+                _authenticationMethodMode = AuthenticationMethodMode.Password;
+                goto retry;
             }
         }
 
