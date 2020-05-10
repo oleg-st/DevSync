@@ -24,8 +24,11 @@ namespace DevSync
             [Option("no-exclude", Default = false, HelpText = "Do not exclude")]
             public bool NoExclude { get; set; }
 
-            [Option("deploy", Default = false, HelpText = "Deploy agent to ~/.devsync")]
+            [Option("deploy", Default = true, HelpText = "Deploy agent to ~/.devsync (deprecated)")]
             public bool DeployAgent { get; set; }
+
+            [Option("no-deploy", Default = false, HelpText = "Do not deploy agent")]
+            public bool NoDeployAgent { get; set; }
 
             [Option("external-ssh", Default = false, HelpText = "Use external ssh command")]
             public bool ExternalSsh { get; set; }
@@ -89,7 +92,7 @@ namespace DevSync
                 throw new SyncException("Empty exclude list, specify --no-exclude if it is intended");
             }
 
-            syncOptions.DeployAgent = options.DeployAgent;
+            syncOptions.DeployAgent = !options.NoDeployAgent;
             syncOptions.ExternalSsh = options.ExternalSsh;
             syncOptions.AuthorizeKey = options.AuthorizeKey;
             return syncOptions;
