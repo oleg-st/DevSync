@@ -199,7 +199,7 @@ namespace DevSyncLib.Command
                 if (bodyReadSuccess && makeExecutable)
                 {
                     // 0755, rwxr-xr-x
-                    fs.ChangeMode(0b111_101_101);
+                    fs.FChangeMode(0b111_101_101);
                 }
 
                 // create empty file

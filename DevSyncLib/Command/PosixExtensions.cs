@@ -10,6 +10,9 @@ namespace DevSyncLib.Command
         [DllImport("libc", EntryPoint = "fchmod")]
         internal static extern int FChmod(SafeFileHandle fd, int mode);
 
+        [DllImport("libc", EntryPoint = "chmod")]
+        internal static extern int Chmod(string pathname, int mode);
+
         [DllImport("libc", EntryPoint = "umask")]
         private static extern uint umask(uint mask);
 
@@ -29,7 +32,30 @@ namespace DevSyncLib.Command
             }
         }
 
-        public static int ChangeMode(this FileStream fileStream, int mode)
+        public static int ChangeMode(string filename, int mode)
+        {
+            if (_noChmod)
+            {
+                return -1;
+            }
+
+            try
+            {
+                return Chmod(filename, mode);
+            }
+            catch (DllNotFoundException) // no libc
+            {
+                _noChmod = true;
+                return -1;
+            }
+            catch (EntryPointNotFoundException) // no chmod in libc
+            {
+                _noChmod = true;
+                return -1;
+            }
+        }
+
+        public static int FChangeMode(this FileStream fileStream, int mode)
         {
             if (_noChmod)
             {

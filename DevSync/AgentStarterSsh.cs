@@ -182,13 +182,21 @@ namespace DevSync
             var publicKeyPath = _keyFilePath + ".pub";
             if (!File.Exists(publicKeyPath) || !File.Exists(_keyFilePath))
             {
+                var directoryName = Path.GetDirectoryName(_keyFilePath);
+                if (!Directory.Exists(directoryName))
+                {
+                    Directory.CreateDirectory(directoryName);
+                    // 0700, rwx------
+                    PosixExtensions.ChangeMode(directoryName, 0b111_000_000);
+                }
+
                 Logger.Log("Generating public/private rsa key pair.");
                 var sshKeyGenerator = new SshRsaKeyGenerator();
                 using (var fs = new FileStream(_keyFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
                     fs.Write(Encoding.ASCII.GetBytes(sshKeyGenerator.ToPrivateKey()));
                     // 0600, rw-------
-                    fs.ChangeMode(0b110_000_000);
+                    fs.FChangeMode(0b110_000_000);
                 }
                 Logger.Log($"Your identification has been saved in {_keyFilePath}");
                 File.WriteAllText(publicKeyPath, sshKeyGenerator.ToRfcPublicKey($"{Environment.UserName}@{Environment.MachineName}") + Environment.NewLine);
@@ -204,7 +212,7 @@ namespace DevSync
                     $"Failed to add public key to authorized keys ({sshCommand.ExitCode}, {sshCommand.Error.Trim()})");
             }
 
-            Logger.Log($"Public key added to authorized keys in {sw.ElapsedMilliseconds} ms");
+            Logger.Log($"Public key was added to authorized keys in {sw.ElapsedMilliseconds} ms");
         }
 
         private ISshStarter CreateSshStarter()

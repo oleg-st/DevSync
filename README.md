@@ -1,5 +1,5 @@
 # DevSync
-DevSync is tool for real-time one-way files synchronization  
+DevSync is a tool for real-time one-way files synchronization  
 The [realsync](https://github.com/DmitryKoterov/dklab_realsync) alternative.  
 DevSync uses its own synchronization protocol instead of rsync. It works much faster than realsync.  
 
