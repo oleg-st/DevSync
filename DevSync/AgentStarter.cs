@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Threading;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
@@ -25,9 +28,12 @@ namespace DevSync
 
         protected int AgentExitCode { get; set; }
 
+        protected readonly CancellationTokenSource CancellationTokenSource;
+
         protected AgentStarter(ILogger logger)
         {
             Logger = logger;
+            CancellationTokenSource = new CancellationTokenSource();
         }
 
         public string DestPath
@@ -56,6 +62,7 @@ namespace DevSync
             {
                 return;
             }
+            CancellationTokenSource.Token.ThrowIfCancellationRequested();
 
             try
             {
@@ -79,6 +86,7 @@ namespace DevSync
             {
                 return;
             }
+            CancellationTokenSource.Token.ThrowIfCancellationRequested();
 
             var sw = Stopwatch.StartNew();
             var response = SendCommandInternal<InitResponse>(new InitRequest(Logger)
@@ -105,6 +113,7 @@ namespace DevSync
 
         protected T SendCommandInternal<T>(Packet packet) where T : class
         {
+            CancellationTokenSource.Token.ThrowIfCancellationRequested();
             try
             {
                 return PacketStream.SendCommand<T>(packet);
@@ -150,6 +159,7 @@ namespace DevSync
                 agentStarter = new AgentStarterSsh(logger)
                 {
                     Host = syncOptions.Host,
+                    Port =  syncOptions.Port,
                     Username = syncOptions.UserName,
                     DeployAgent = syncOptions.DeployAgent,
                     KeyFilePath = syncOptions.KeyFilePath,
@@ -166,7 +176,9 @@ namespace DevSync
         protected void SetAgentExitCode(int exitCode, string errorMessage)
         {
             AgentExitCode = exitCode;
-            if (exitCode == 0 && string.IsNullOrWhiteSpace(errorMessage))
+            if ((exitCode == 0 && string.IsNullOrWhiteSpace(errorMessage)) ||
+                CancellationTokenSource.IsCancellationRequested
+            )
             {
                 return;
             }
@@ -175,7 +187,13 @@ namespace DevSync
 
         public void Stop()
         {
+            CancellationTokenSource.Cancel();
             Cleanup();
+        }
+
+        public static string GetAssemblyDirectoryName()
+        {
+            return Path.GetDirectoryName(Assembly.GetCallingAssembly().Location) ?? "";
         }
     }
 }

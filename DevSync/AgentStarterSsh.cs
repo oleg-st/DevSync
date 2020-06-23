@@ -17,6 +17,7 @@ namespace DevSync
         private ISshStarterCommand _sshStarterCommand;
 
         private string _host, _username, _keyFilePath;
+        private int _port;
 
         private AuthenticationMethodMode _authenticationMethodMode;
 
@@ -26,6 +27,16 @@ namespace DevSync
             set
             {
                 _host = value;
+                IsStarted = false;
+            }
+        }
+
+        public int Port
+        {
+            get => _port;
+            set
+            {
+                _port = value;
                 IsStarted = false;
             }
         }
@@ -133,7 +144,7 @@ namespace DevSync
             using var memoryStream = new MemoryStream();
             using (var tarArchive = TarArchive.CreateOutputTarArchive(memoryStream))
             {
-                var assemblyPath = Path.GetDirectoryName(typeof(PacketStream).Assembly.Location);
+                var assemblyPath = GetAssemblyDirectoryName();
 
                 foreach (var filename in files)
                 {
@@ -151,6 +162,10 @@ namespace DevSync
             var sw = Stopwatch.StartNew();
             var tarBytes = CreateTarForAgent();
             using var sshCommand = sshStarter.RunCommand($"mkdir -p {path} && tar xf - -C {path}");
+            lock (this)
+            {
+                _sshStarterCommand = sshCommand;
+            }
             try
             {
                 using (sshCommand.InputStream)
@@ -168,6 +183,10 @@ namespace DevSync
             {
             }
             sshCommand.Wait();
+            lock (this)
+            {
+                _sshStarterCommand = null;
+            }
             if (sshCommand.ExitCode != 0)
             {
                 throw new SyncException(
@@ -205,7 +224,15 @@ namespace DevSync
             var publicKey = File.ReadAllText(publicKeyPath).Trim();
             var sw = Stopwatch.StartNew();
             using var sshCommand = sshStarter.RunCommand($"mkdir -p .ssh && chmod 700 .ssh && echo {publicKey} >> .ssh/authorized_keys && chmod 600 .ssh/authorized_keys");
+            lock (this)
+            {
+                _sshStarterCommand = sshCommand;
+            }
             sshCommand.Wait();
+            lock (this)
+            {
+                _sshStarterCommand = null;
+            }
             if (sshCommand.ExitCode != 0)
             {
                 throw new SyncException(
@@ -227,6 +254,7 @@ namespace DevSync
                 sshStarter = new SshStarter.Internal.SshStarter(Logger);
             }
             sshStarter.Host = _host;
+            sshStarter.Port = _port;
             sshStarter.KeyFilePath = _keyFilePath;
             sshStarter.Username = _username;
             sshStarter.AuthenticationMode = _authenticationMethodMode;
@@ -257,11 +285,16 @@ namespace DevSync
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 };
+                lock (this)
+                {
+                    _sshStarter = sshStarter;
+                }
                 sshStarter.Connect();
 
                 if (_authenticationMethodMode == AuthenticationMethodMode.Password && AuthorizeKey)
                 {
                     DoAuthorizeKey(sshStarter);
+                    CancellationTokenSource.Token.ThrowIfCancellationRequested();
                     AuthorizeKey = false;
                     goto restart;
                 }
@@ -269,6 +302,7 @@ namespace DevSync
                 if (DeployAgent)
                 {
                     DoDeployAgent(sshStarter, DeployPath);
+                    CancellationTokenSource.Token.ThrowIfCancellationRequested();
                 }
 
                 /*
@@ -283,12 +317,11 @@ namespace DevSync
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 };
-                PacketStream = new PacketStream(sshCommand.OutputStream, sshCommand.InputStream, Logger);
                 lock (this)
                 {
-                    _sshStarter = sshStarter;
                     _sshStarterCommand = sshCommand;
                 }
+                PacketStream = new PacketStream(sshCommand.OutputStream, sshCommand.InputStream, Logger);
             }
             catch (SshStarterAuthenticationException ex)
             {

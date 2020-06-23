@@ -33,7 +33,7 @@ namespace DevSync
             [Option("external-ssh", Default = false, HelpText = "Use external ssh command")]
             public bool ExternalSsh { get; set; }
 
-            [Option("authorize-key", Default = false, HelpText = "Use password authentication, generate RSA-4096 key pair (if necessary) and setup public key authentication")]
+            [Option("authorize-key", Default = false, HelpText = "Use password authentication, generate RSA-2048 key pair (if necessary) and setup public key authentication")]
             public bool AuthorizeKey { get; set; }
 
             [Option("realsync", Default = null, HelpText = "Realsync source directory (with .realsync file)")]
@@ -41,6 +41,9 @@ namespace DevSync
 
             [Option("key", Default = null, HelpText = "Path to the identity (private key) for public key authentication. The default is ~/.ssh/id_dsa")]
             public string KeyFilePath { get; set; }
+
+            [Option("port", Required = false, Default = SyncOptions.DefaultPort, HelpText = "Port to connect to on the remote host.")]
+            public int Port { get; set; }
         }
 
         static void PrintHelp(ParserResult<CommandLineOptions> parserResult)
@@ -59,18 +62,18 @@ namespace DevSync
             Environment.Exit(-1);
         }
 
-        private static SyncOptions GetSyncOptions(CommandLineOptions options)
+        private static SyncOptions GetSyncOptions(CommandLineOptions options, ILogger logger)
         {
             SyncOptions syncOptions = null;
 
             if (!string.IsNullOrEmpty(options.RealsyncPath))
             {
-                syncOptions = SyncOptions.CreateFromRealsyncDirectory(options.RealsyncPath);
+                syncOptions = SyncOptions.CreateFromRealsyncDirectory(options.RealsyncPath, logger);
 
             }
             else if (!string.IsNullOrEmpty(options.SourcePath) && !string.IsNullOrEmpty(options.DestinationPath))
             {
-                syncOptions = SyncOptions.CreateFromSourceAndDestination(options.SourcePath, options.DestinationPath);
+                syncOptions = SyncOptions.CreateFromSourceAndDestination(options.SourcePath, options.DestinationPath, options.Port);
                 if (!options.NoExclude && !string.IsNullOrEmpty(options.ExcludeListPath))
                 {
                     syncOptions.ExcludeList.AddRange(File.ReadAllLines(options.ExcludeListPath));
@@ -117,7 +120,7 @@ namespace DevSync
             {
                 try
                 {
-                    var syncOptions = GetSyncOptions(options);
+                    var syncOptions = GetSyncOptions(options, logger);
                     if (syncOptions == null)
                     {
                         PrintHelp(parserResult);

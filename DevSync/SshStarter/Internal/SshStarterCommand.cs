@@ -28,25 +28,20 @@ namespace DevSync.SshStarter.Internal
 
         public void Wait()
         {
-            SshCommand sshCommand;
             lock (this)
             {
-                sshCommand = _sshCommand;
+                _sshCommand.EndExecute(_asyncResult);
+                ExitCode = _sshCommand.ExitStatus;
+                Error = _sshCommand.Error;
             }
-            sshCommand.EndExecute(_asyncResult);
-            ExitCode = sshCommand.ExitStatus;
-            Error = sshCommand.Error;
         }
 
         protected void Cleanup()
         {
-            SshCommand sshCommand;
             lock (this)
             {
-                sshCommand = _sshCommand;
+                _sshCommand?.Dispose();
             }
-
-            sshCommand?.Dispose();
         }
 
         public void Dispose()

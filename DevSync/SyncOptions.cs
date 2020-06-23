@@ -3,13 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using DevSyncLib;
+using DevSyncLib.Logger;
 
 namespace DevSync
 {
     public class SyncOptions
     {
+        public const int DefaultPort = 22;
         public string SourcePath { get; set; }
         public string Host { get; set; }
+        public int Port { get; set; } = DefaultPort;
         public string UserName { get; set; }
         public string DestinationPath { get; set; }
         public List<string> ExcludeList { get; set; } = new List<string>();
@@ -27,7 +30,7 @@ namespace DevSync
             KeyFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh/id_rsa");
         }
 
-        public static SyncOptions CreateFromSourceAndDestination(string sourcePath, string destinationPath)
+        public static SyncOptions CreateFromSourceAndDestination(string sourcePath, string destinationPath, int port)
         {
             if (string.IsNullOrWhiteSpace(sourcePath))
             {
@@ -43,18 +46,19 @@ namespace DevSync
             return new SyncOptions
             {
                 Host = syncPath.Host,
+                Port = port,
                 UserName = syncPath.UserName,
                 DestinationPath = syncPath.Path,
                 SourcePath = sourcePath
             };
         }
 
-        public static SyncOptions CreateFromRealsyncDirectory(string path)
+        public static SyncOptions CreateFromRealsyncDirectory(string path, ILogger logger)
         {
-            return CreateFromRealsyncFile(Path.Combine(path, ".realsync"));
+            return CreateFromRealsyncFile(Path.Combine(path, ".realsync"), logger);
         }
 
-        public static SyncOptions CreateFromRealsyncFile(string filename)
+        public static SyncOptions CreateFromRealsyncFile(string filename, ILogger logger)
         {
             if (!File.Exists(filename))
             {
@@ -90,7 +94,7 @@ namespace DevSync
                 {
                     case "local":
                         // local path may be relative to directory of filename
-                        syncOptions.SourcePath = Path.GetFullPath(value, Path.GetFullPath(Path.GetDirectoryName(filename)));
+                        syncOptions.SourcePath = Path.GetFullPath(value, Path.GetFullPath(Path.GetDirectoryName(filename) ?? Environment.CurrentDirectory));
                         break;
                     case "remote":
                         syncOptions.DestinationPath = value;
@@ -99,7 +103,15 @@ namespace DevSync
                         syncOptions.UserName = value;
                         break;
                     case "host":
-                        syncOptions.Host = value;
+                        if (Uri.TryCreate($"tcp://{value}", UriKind.Absolute, out var uri))
+                        {
+                            syncOptions.Host = uri.Host;
+                            syncOptions.Port = uri.Port < 0 ? DefaultPort : uri.Port;
+                        }
+                        else
+                        {
+                            syncOptions.Host = value;
+                        }
                         break;
                     case "exclude":
                         syncOptions.ExcludeList.Add(value);
@@ -107,7 +119,8 @@ namespace DevSync
                     case "nosound":
                         break;
                     default:
-                        throw new SyncException($"Unknown realsync option: {key}");
+                        logger.Log($"Unknown realsync option: {key}");
+                        break;
                 }
             }
 
@@ -126,7 +139,7 @@ namespace DevSync
 
         public override string ToString()
         {
-            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key": "")}";
+            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(Port != DefaultPort ? $", port {Port}" : "")}{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key": "")}";
         }
     }
 }

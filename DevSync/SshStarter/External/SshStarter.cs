@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace DevSync.SshStarter.External
 {
@@ -11,6 +12,8 @@ namespace DevSync.SshStarter.External
         }
 
         public string Host { get; set; }
+
+        public int Port { get; set; }
 
         public string Username { get; set; }
 
@@ -44,7 +47,9 @@ namespace DevSync.SshStarter.External
                 "-o",
                 "ServerAliveInterval 30",
                 "-l",
-                Username
+                Username,
+                "-p",
+                Port.ToString(CultureInfo.InvariantCulture)
             };
             if (AuthenticationMode == AuthenticationMethodMode.Key)
             {

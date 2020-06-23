@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Threading;
 
 namespace DevSync.SshStarter.External
 {
@@ -14,6 +16,10 @@ namespace DevSync.SshStarter.External
 
         public string Error { get; private set; }
 
+        private readonly StringBuilder _errorLines = new StringBuilder();
+
+        private readonly ManualResetEvent _errorWaitHandle = new ManualResetEvent(false);
+
         public SshStarterCommand(Process process)
         {
             _process = process;
@@ -23,17 +29,27 @@ namespace DevSync.SshStarter.External
                 SetError();
                 OnExit?.Invoke(this, EventArgs.Empty);
             };
+            _process.ErrorDataReceived += (sender, args) =>
+            {
+                if (args.Data != null)
+                {
+                    _errorLines.AppendLine(args.Data);
+                }
+                else
+                {
+                    _errorWaitHandle.Set();
+                }
+            };
             _process.Start();
+            _process.BeginErrorReadLine();
         }
 
         private void SetError()
         {
+            _errorWaitHandle.WaitOne();
             lock (this)
             {
-                if (Error == null)
-                {
-                    Error = _process.StandardError.ReadToEnd();
-                }
+                Error ??= _errorLines.ToString();
             }
         }
 
@@ -42,7 +58,10 @@ namespace DevSync.SshStarter.External
             try
             {
                 // the try-catch is because Kill() will throw if the process is disposed
-                _process.Kill();
+                _process.CancelErrorRead();
+                _errorWaitHandle.Set();
+                _process.Kill(true);
+                _errorWaitHandle.Dispose();
             }
             catch
             {

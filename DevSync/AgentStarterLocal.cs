@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO;
+using System.Text;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 
@@ -9,12 +10,15 @@ namespace DevSync
     {
         private Process _process;
 
+        private readonly StringBuilder _errorLines = new StringBuilder();
+
         protected override void Cleanup()
         {
             try
             {
                 // the try-catch is because Kill() will throw if the process is disposed
-                _process?.Kill();
+                _process?.CancelErrorRead();
+                _process?.Kill(true);
             }
             catch
             {
@@ -24,7 +28,7 @@ namespace DevSync
 
         public override void DoStart()
         {
-            var agentPath = Path.Combine(Path.GetDirectoryName(typeof(PacketStream).Assembly.Location), "DevSyncAgent.dll");
+            var agentPath = Path.Combine(GetAssemblyDirectoryName(), "DevSyncAgent.dll");
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "dotnet",
@@ -42,11 +46,19 @@ namespace DevSync
             _process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true };
             _process.Exited += (sender, args) =>
             {
-                SetAgentExitCode(_process.ExitCode, _process.StandardError.ReadToEnd());
+                SetAgentExitCode(_process.ExitCode, _errorLines.ToString());
                 Cleanup();
                 IsStarted = false;
             };
+            _process.ErrorDataReceived += (sender, args) =>
+            {
+                if (args.Data != null)
+                {
+                    _errorLines.AppendLine(args.Data);
+                }
+            };
             _process.Start();
+            _process.BeginErrorReadLine();
             PacketStream = new PacketStream(_process.StandardOutput.BaseStream, _process.StandardInput.BaseStream, Logger);
         }
 

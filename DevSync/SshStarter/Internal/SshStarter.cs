@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using DevSync.Cryptography;
 using DevSyncLib;
 using DevSyncLib.Logger;
@@ -15,6 +14,8 @@ namespace DevSync.SshStarter.Internal
         private PrivateKeyFile _privateKeyFile;
 
         public string Host { get; set; }
+        public int Port { get; set; }
+
         public string Username { get; set; }
 
         private string _keyFilePath;
@@ -45,13 +46,11 @@ namespace DevSync.SshStarter.Internal
 
         protected void Cleanup()
         {
-            SshClient sshClient;
             lock (this)
             {
-                sshClient = _sshClient;
+                _sshClient?.Dispose();
+                _sshClient = null;
             }
-
-            sshClient?.Dispose();
         }
 
         private AuthenticationMethod GetAuthenticationMethod()
@@ -168,7 +167,7 @@ namespace DevSync.SshStarter.Internal
             {
                 Cleanup();
 
-                var connectionInfo = new ConnectionInfo(Host, Username, GetAuthenticationMethod())
+                var connectionInfo = new ConnectionInfo(Host, Port, Username, GetAuthenticationMethod())
                 {
                     RetryAttempts = int.MaxValue,
                     Timeout = new TimeSpan(0, 0, 20)
@@ -180,11 +179,11 @@ namespace DevSync.SshStarter.Internal
                 {
                     OnConnectError?.Invoke(this, new SshStarterErrorEventArgs { Error = args.Exception.Message });
                 };
-                sshClient.Connect();
                 lock (this)
                 {
                     _sshClient = sshClient;
                 }
+                sshClient.Connect();
             }
             catch (SshAuthenticationException ex)
             {

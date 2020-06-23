@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
@@ -13,6 +14,8 @@ namespace DevSync
 {
     public partial class Sender : IDisposable
     {
+        private const int ShutdownTimeout = 5000;
+
         private readonly ILogger _logger;
         private volatile bool _needToScan, _needToQuit, _gitIsBusy;
         private FileSystemWatcher _fileSystemWatcher;
@@ -24,7 +27,7 @@ namespace DevSync
         private readonly Dictionary<string, FsSenderChange> _changes;
         private readonly AgentStarter _agentStarter;
 
-        private const string GIT_INDEX_LOCK_FILENAME = ".git/index.lock";
+        private const string GitIndexLockFilename = ".git/index.lock";
 
         private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
         private readonly ManualResetEvent _gitIsReadyEvent = new ManualResetEvent(true);
@@ -33,6 +36,7 @@ namespace DevSync
         private readonly PathScanner _pathScanner;
         private readonly SentReporter _sentReporter;
         private bool _isSending;
+        private readonly CancellationTokenSource _cancellationTokenSource;
 
         protected class SentReporter
         {
@@ -41,7 +45,7 @@ namespace DevSync
             private long _totalSize;
             private readonly ILogger _logger;
             private string _lastChange;
-            private const int REPORT_INTERVAL = 1000;
+            private const int ReportInterval = 1000;
             private TimeSpan _timeSpan;
 
             public SentReporter(ILogger logger)
@@ -60,7 +64,7 @@ namespace DevSync
                 {
                     _lastChange =  changes.First().ToString();
                 }
-                if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > REPORT_INTERVAL)
+                if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > ReportInterval)
                 {
                     Flush();
                 }
@@ -91,6 +95,7 @@ namespace DevSync
             _pathScanner = new PathScanner(this);
             _sentReporter = new SentReporter(_logger);
             _srcPath = Path.GetFullPath(syncOptions.SourcePath);
+            _cancellationTokenSource = new CancellationTokenSource();
 
             if (!Directory.Exists(_srcPath))
             {
@@ -153,11 +158,12 @@ namespace DevSync
              * A failed start could cause unnecessary scanning source in old timeline.
              * No need to scan source before start in most cases because it is about as fast as the scan destination.
              */
-            _agentStarter.Start();
-
-            using (var tokenSource = new CancellationTokenSource())
+            using (var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token))
             {
                 var cancellationToken = tokenSource.Token;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                _agentStarter.Start();
 
                 // scan source
                 var task = Task.Run(() =>
@@ -183,7 +189,8 @@ namespace DevSync
                     // scan destination
                     var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
                     destList = response.FileList.ToDictionary(x => x.Path, y => y);
-                    _logger.Log($"Scanned destination {destList.Count} items in {swScanDestination.ElapsedMilliseconds} ms");
+                    _logger.Log(
+                        $"Scanned destination {destList.Count} items in {swScanDestination.ElapsedMilliseconds} ms");
                     task.Wait(cancellationToken);
                 }
                 catch (Exception)
@@ -286,7 +293,7 @@ namespace DevSync
                 return;
             }
 
-            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GIT_INDEX_LOCK_FILENAME)
+            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GitIndexLockFilename)
             {
                 SetGitIsBusy(true);
             }
@@ -307,7 +314,7 @@ namespace DevSync
                 return;
             }
 
-            if (_gitIsBusy && path == GIT_INDEX_LOCK_FILENAME)
+            if (_gitIsBusy && path == GitIndexLockFilename)
             {
                 SetGitIsBusy(false);
             }
@@ -330,7 +337,7 @@ namespace DevSync
                 return;
             }
 
-            if (_gitIsBusy && oldPath == GIT_INDEX_LOCK_FILENAME)
+            if (_gitIsBusy && oldPath == GitIndexLockFilename)
             {
                 SetGitIsBusy(false);
             }
@@ -590,7 +597,7 @@ namespace DevSync
                     const int intervalMs = 1000;
                     _logger.Log($"Waiting for {intervalMs} ms");
                     // TODO: dynamic interval?
-                    Thread.Sleep(intervalMs);
+                    _cancellationTokenSource.Token.WaitHandle.WaitOne(intervalMs);
                 }
 
                 WaitForWork();
@@ -611,9 +618,23 @@ namespace DevSync
             UpdateHasWork();
         }
 
+        private async Task WaitForShutdown()
+        {
+            await Task.Delay(ShutdownTimeout).ConfigureAwait(false);
+            _logger.Log("Shutdown timed out", LogLevel.Warning);
+            Environment.Exit(-1);
+        }
+
         private void Stop()
         {
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            Task.Factory.StartNew(WaitForShutdown, TaskCreationOptions.LongRunning);
             _needToQuit = true;
+            _cancellationTokenSource.Cancel();
             _agentStarter.Stop();
             _pathScanner.Stop();
             UpdateHasWork();
