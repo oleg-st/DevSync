@@ -55,6 +55,12 @@ namespace DevSyncLib
                 foreach (var fsInfo in fileSystemInfos)
                 {
                     _cancellationToken?.ThrowIfCancellationRequested();
+                    // U+FFFD is the "Unicode replacement character"
+                    // Skip names with text encoding problems, we can't handle them
+                    if (fsInfo.Name.Contains((char)0xFFFD))
+                    {
+                        continue;
+                    }
 
                     var path = Path.Combine(relativePath, fsInfo.Name);
                     var fsEntry = FsEntry.Empty;
