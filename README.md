@@ -4,7 +4,7 @@ The [realsync](https://github.com/DmitryKoterov/dklab_realsync) alternative.
 DevSync uses its own synchronization protocol instead of rsync. It works much faster than realsync.  
 
 # Requirements  
-[.NET Core 3.0+ runtime](https://dotnet.microsoft.com/download/dotnet-core/) on the client and server.  
+[.NET Core 3.1+ runtime](https://dotnet.microsoft.com/download/dotnet-core/) on the client and server.  
 Supported operating systems are `Linux`, `macOS` or `Windows` (the same as `.NET Core`).  
 
 # Installation:  
