@@ -1,6 +1,6 @@
-﻿using System;
+﻿using Renci.SshNet;
+using System;
 using System.IO;
-using Renci.SshNet;
 
 namespace DevSync.SshStarter.Internal
 {

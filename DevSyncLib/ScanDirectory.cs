@@ -1,8 +1,8 @@
-﻿using System;
+﻿using DevSyncLib.Logger;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using DevSyncLib.Logger;
 
 namespace DevSyncLib
 {

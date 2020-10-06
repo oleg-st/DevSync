@@ -1,9 +1,9 @@
-﻿using System;
+﻿using DevSyncLib.Command.Compression;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using DevSyncLib.Command.Compression;
 
 namespace DevSyncLib.Command
 {
@@ -24,7 +24,7 @@ namespace DevSyncLib.Command
         public class ChunkWriteStreamFlusher
         {
             // 4 bytes (int32) for chunk length
-            private const int LENGTH_SIZE = 4;
+            private const int LengthSize = 4;
 
             private readonly Stream _stream;
             private readonly ICompression _compression;
@@ -35,7 +35,7 @@ namespace DevSyncLib.Command
             private readonly ManualResetEvent _noFlushEvent = new ManualResetEvent(true);
 
             private int _chunkLength;
-            private readonly byte[] _chunkBytes = new byte[ChunkSize + LENGTH_SIZE];
+            private readonly byte[] _chunkBytes = new byte[ChunkSize + LengthSize];
             private readonly byte[] _chunkCompressedBytes;
             private Stopwatch _flushStopwatch;
             // flush every 500ms (so agent would have some data to process instead of waiting)
@@ -52,7 +52,7 @@ namespace DevSyncLib.Command
 
                 if (_compression != null)
                 {
-                    _chunkCompressedBytes = new byte[ChunkSize + LENGTH_SIZE];
+                    _chunkCompressedBytes = new byte[ChunkSize + LengthSize];
                 }
             }
 
@@ -106,7 +106,7 @@ namespace DevSyncLib.Command
                 // write length and data
                 try
                 {
-                    _stream.Write(buffer, 0, LENGTH_SIZE + length);
+                    _stream.Write(buffer, 0, LengthSize + length);
                     _stream.Flush();
                 }
                 catch (EndOfStreamException)
@@ -117,8 +117,8 @@ namespace DevSyncLib.Command
 
             protected bool TryCompress(out int written)
             {
-                return _compression.TryCompress(_chunkBytes, LENGTH_SIZE, _chunkLength,
-                    _chunkCompressedBytes, LENGTH_SIZE, ChunkSize, out written);
+                return _compression.TryCompress(_chunkBytes, LengthSize, _chunkLength,
+                    _chunkCompressedBytes, LengthSize, ChunkSize, out written);
             }
 
             private void DoWork()
@@ -192,7 +192,7 @@ namespace DevSyncLib.Command
                 {
                     _flushException = null;
                     _chunkLength = length;
-                    Buffer.BlockCopy(data, offset, _chunkBytes, LENGTH_SIZE, _chunkLength);
+                    Buffer.BlockCopy(data, offset, _chunkBytes, LengthSize, _chunkLength);
                     _needToFlush = true;
                 }
                 UpdateHasWork();

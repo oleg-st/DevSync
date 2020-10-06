@@ -1,9 +1,9 @@
-﻿using System;
+﻿using DevSyncLib;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DevSyncLib;
 
 namespace DevSync
 {
@@ -14,7 +14,7 @@ namespace DevSync
             private volatile bool _needToQuit;
             private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
             private readonly HashSet<string> _pathsToScan = new HashSet<string>();
-            private readonly Sender _sender; 
+            private readonly Sender _sender;
             private readonly CancellationTokenSource _cancellationTokenSource;
 
             public PathScanner(Sender sender)
@@ -53,7 +53,7 @@ namespace DevSync
                 {
                 }
             }
-            
+
             private void DoWork()
             {
                 string path;

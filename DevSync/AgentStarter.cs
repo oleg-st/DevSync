@@ -1,12 +1,12 @@
-﻿using System;
+﻿using DevSyncLib;
+using DevSyncLib.Command;
+using DevSyncLib.Logger;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using DevSyncLib;
-using DevSyncLib.Command;
-using DevSyncLib.Logger;
 
 namespace DevSync
 {
@@ -149,7 +149,7 @@ namespace DevSync
         public static AgentStarter Create(SyncOptions syncOptions, ILogger logger)
         {
             AgentStarter agentStarter;
-            
+
             if (string.IsNullOrEmpty(syncOptions.Host))
             {
                 agentStarter = new AgentStarterLocal(logger);
@@ -159,7 +159,7 @@ namespace DevSync
                 agentStarter = new AgentStarterSsh(logger)
                 {
                     Host = syncOptions.Host,
-                    Port =  syncOptions.Port,
+                    Port = syncOptions.Port,
                     Username = syncOptions.UserName,
                     DeployAgent = syncOptions.DeployAgent,
                     KeyFilePath = syncOptions.KeyFilePath,

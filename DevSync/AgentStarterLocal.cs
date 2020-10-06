@@ -1,12 +1,12 @@
-﻿using System.Diagnostics;
+﻿using DevSyncLib.Command;
+using DevSyncLib.Logger;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
-using DevSyncLib.Command;
-using DevSyncLib.Logger;
 
 namespace DevSync
 {
-    public class AgentStarterLocal: AgentStarter
+    public class AgentStarterLocal : AgentStarter
     {
         private Process _process;
 

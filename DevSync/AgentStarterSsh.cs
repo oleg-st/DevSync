@@ -1,13 +1,13 @@
-﻿using System;
-using System.Diagnostics;
-using System.IO;
-using System.Text;
-using System.Threading.Tasks;
-using DevSync.SshStarter;
+﻿using DevSync.SshStarter;
 using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using ICSharpCode.SharpZipLib.Tar;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace DevSync
 {
@@ -263,10 +263,10 @@ namespace DevSync
 
         public override void DoStart()
         {
-            restart:
+        restart:
             _authenticationMethodMode = AuthenticationMethodMode.Key;
 
-            retry:
+        retry:
             try
             {
                 Cleanup();

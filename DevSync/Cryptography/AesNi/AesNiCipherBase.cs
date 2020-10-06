@@ -1,8 +1,8 @@
-﻿using System;
+﻿using Renci.SshNet.Security.Cryptography;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using Renci.SshNet.Security.Cryptography;
 
 namespace DevSync.Cryptography.AesNi
 {
@@ -100,7 +100,7 @@ namespace DevSync.Cryptography.AesNi
         {
             var temp1 = Sse2.LoadVector128(keyPointer);
             // load 64bit
-            var temp3 = Vector128.Create(*(ulong*) (keyPointer + 16), 0).As<ulong, byte>();
+            var temp3 = Vector128.Create(*(ulong*)(keyPointer + 16), 0).As<ulong, byte>();
             KeygenThree192(schedule, ref temp1, ref temp3, 0, 0x01, 0x02);
             KeygenThree192(schedule, ref temp1, ref temp3, 3, 0x04, 0x08);
             KeygenThree192(schedule, ref temp1, ref temp3, 6, 0x10, 0x20);

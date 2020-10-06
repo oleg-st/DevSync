@@ -1,9 +1,9 @@
-﻿using System;
+﻿using DevSyncLib;
+using DevSyncLib.Logger;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
-using DevSyncLib;
-using DevSyncLib.Logger;
 
 namespace DevSync
 {
@@ -67,7 +67,7 @@ namespace DevSync
 
             var syncOptions = new SyncOptions();
 
-            // local = D:/Work/SEDv1-MSK-3
+            // local = D:/Work/Project
             var optionRegex = new Regex("^(\\S+)\\s*=\\s*(.*)$", RegexOptions.Compiled);
 
             var lines = File.ReadAllLines(filename);
@@ -139,7 +139,7 @@ namespace DevSync
 
         public override string ToString()
         {
-            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(Port != DefaultPort ? $", port {Port}" : "")}{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key": "")}";
+            return $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(Port != DefaultPort ? $", port {Port}" : "")}{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key" : "")}";
         }
     }
 }

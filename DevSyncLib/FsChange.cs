@@ -2,7 +2,7 @@
 
 namespace DevSyncLib
 {
-    public class FsChange
+    public class FsChange : IEquatable<FsChange>
     {
         public FsChangeType ChangeType;
         public string Path;
@@ -21,6 +21,19 @@ namespace DevSyncLib
         public override string ToString()
         {
             return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldPath} -> " : "")}{Path}{(ChangeType == FsChangeType.Change && Length >= 0 ? $", {Length}" : "")}";
+        }
+
+        public bool Equals(FsChange other)
+        {
+            return other != null && ChangeType == other.ChangeType && ChangeType switch
+            {
+                FsChangeType.Change => Path == other.Path &&
+                                       Length == other.Length &&
+                                       LastWriteTime.Equals(other.LastWriteTime),
+                FsChangeType.Remove => Path == other.Path,
+                FsChangeType.Rename => Path == other.Path && OldPath == other.OldPath,
+                _ => true
+            };
         }
 
         public FsChange(FsChangeType changeType, string path)

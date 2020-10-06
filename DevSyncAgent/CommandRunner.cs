@@ -1,9 +1,9 @@
-﻿using System;
-using System.IO;
-using System.Linq;
-using DevSyncLib;
+﻿using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace DevSyncAgent
 {
@@ -39,7 +39,7 @@ namespace DevSyncAgent
             }
             catch (SyncException ex)
             {
-                return new ErrorResponse(_logger) { Message = ex.Message, Recoverable = ex.Recoverable, NeedToWait = ex.NeedToWait};
+                return new ErrorResponse(_logger) { Message = ex.Message, Recoverable = ex.Recoverable, NeedToWait = ex.NeedToWait };
             }
             catch (Exception ex)
             {
@@ -91,7 +91,7 @@ namespace DevSyncAgent
         {
             CheckInitialized();
             applyRequest.BasePath = _path;
-            var response = new ApplyResponse(_logger) { Result = applyRequest.ReadAndApplyChanges(_excludeList)};
+            var response = new ApplyResponse(_logger) { Result = applyRequest.ReadAndApplyChanges(_excludeList) };
             return response;
         }
     }

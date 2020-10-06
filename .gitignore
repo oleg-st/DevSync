@@ -8,3 +8,5 @@ DevSyncLib/obj/
 *.user
 DevSync/Properties/launchSettings.json
 Pack/
+/DevSyncTest/bin/
+/DevSyncTest/obj/

@@ -1,10 +1,10 @@
-﻿using System;
-using System.IO;
-using System.Reflection;
-using CommandLine;
+﻿using CommandLine;
 using CommandLine.Text;
 using DevSyncLib;
 using DevSyncLib.Logger;
+using System;
+using System.IO;
+using System.Reflection;
 
 namespace DevSync
 {

@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
-using System.IO;
-using DevSyncLib.Command.Compression;
+﻿using DevSyncLib.Command.Compression;
 using DevSyncLib.Logger;
+using System.Collections.Generic;
+using System.IO;
 
 namespace DevSyncLib.Command
 {
@@ -14,8 +14,7 @@ namespace DevSyncLib.Command
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
-            // fastest with window 1MB same as chunk size
-            Compression = new BrotliCompression(0, 20);
+            Compression = new BrotliCompression();
 
             inputStream = new ChunkReadStream(inputStream, Compression);
             outputStream = new ChunkWriteStream(outputStream, Compression);
@@ -68,7 +67,7 @@ namespace DevSyncLib.Command
             Writer.Flush();
         }
 
-        public T SendCommand<T>(Packet packet) where T: class
+        public T SendCommand<T>(Packet packet) where T : class
         {
             WritePacket(packet);
             var responsePacket = ReadPacket();

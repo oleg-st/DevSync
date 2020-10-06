@@ -89,7 +89,7 @@ namespace DevSync.SshStarter.External
             }
             // Fix home path in ssh
             processStartInfo.Environment["HOME"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            return new SshStarterCommand(new Process { StartInfo =  processStartInfo, EnableRaisingEvents = true });
+            return new SshStarterCommand(new Process { StartInfo = processStartInfo, EnableRaisingEvents = true });
         }
     }
 }

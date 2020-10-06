@@ -1,14 +1,14 @@
-﻿using System;
+﻿using Renci.SshNet.Security.Cryptography;
+using System;
 using System.Security.Cryptography;
-using Renci.SshNet.Security.Cryptography;
 
 namespace DevSync.Cryptography
 {
     public abstract class NativeBlockCipher : BlockCipher
     {
         protected SymmetricAlgorithm SymmetricAlgorithm;
-        protected ICryptoTransform _encryptor;
-        protected ICryptoTransform _decryptor;
+        protected ICryptoTransform Encryptor;
+        protected ICryptoTransform Decryptor;
         protected byte[] Iv;
 
         protected NativeBlockCipher(byte[] key, byte blockSize, Renci.SshNet.Security.Cryptography.Ciphers.CipherMode mode) : base(key, blockSize, mode, null)
@@ -28,23 +28,18 @@ namespace DevSync.Cryptography
             return SymmetricAlgorithm ??= Create();
         }
 
-        public override int EncryptBlock(byte[] inputBuffer, int inputOffset, int inputCount, byte[] outputBuffer, int outputOffset)
+        public override int EncryptBlock(byte[] inputBuffer, int inputOffset, int inputCount, byte[] outputBuffer,
+            int outputOffset)
         {
-            if (_encryptor == null)
-            {
-                _encryptor = GetSymmetricAlgorithm().CreateEncryptor(Key, Iv);
-            }
-
-            return _encryptor.TransformBlock(inputBuffer, inputOffset, inputCount, outputBuffer, outputOffset);
+            Encryptor ??= GetSymmetricAlgorithm().CreateEncryptor(Key, Iv);
+            return Encryptor.TransformBlock(inputBuffer, inputOffset, inputCount, outputBuffer, outputOffset);
         }
 
-        public override int DecryptBlock(byte[] inputBuffer, int inputOffset, int inputCount, byte[] outputBuffer, int outputOffset)
+        public override int DecryptBlock(byte[] inputBuffer, int inputOffset, int inputCount, byte[] outputBuffer,
+            int outputOffset)
         {
-            if (_decryptor == null)
-            {
-                _decryptor = GetSymmetricAlgorithm().CreateDecryptor(Key, Iv);
-            }
-            return _decryptor.TransformBlock(inputBuffer, inputOffset, inputCount, outputBuffer, outputOffset);
+            Decryptor ??= GetSymmetricAlgorithm().CreateDecryptor(Key, Iv);
+            return Decryptor.TransformBlock(inputBuffer, inputOffset, inputCount, outputBuffer, outputOffset);
         }
     }
 }

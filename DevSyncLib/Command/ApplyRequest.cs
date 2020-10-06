@@ -1,12 +1,12 @@
-﻿using System;
+﻿using DevSyncLib.Logger;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
-    public class ApplyRequest: Packet
+    public class ApplyRequest : Packet
     {
         public override short Signature => 5;
 
@@ -113,10 +113,7 @@ namespace DevSyncLib.Command
                             }
                             catch (Exception ex)
                             {
-                                if (exception == null)
-                                {
-                                    exception = ex;
-                                }
+                                exception ??= ex;
                                 Logger.Log($"Error deleting {fsEntryPath}: {ex.Message}", LogLevel.Warning);
                             }
                         }
@@ -127,10 +124,7 @@ namespace DevSyncLib.Command
                         }
                         catch (Exception ex)
                         {
-                            if (exception == null)
-                            {
-                                exception = ex;
-                            }
+                            exception ??= ex;
                             Logger.Log($"Error deleting {path}: {ex.Message}", LogLevel.Warning);
                         }
 
@@ -223,7 +217,7 @@ namespace DevSyncLib.Command
                 if (fsChangeResult.ResultCode != FsChangeResultCode.Ok && fsChange.ChangeType == FsChangeType.Change)
                 {
                     var path = Path.Combine(BasePath, fsChange.Path);
-                    if (fsChange.IsDirectory && File.Exists(path) 
+                    if (fsChange.IsDirectory && File.Exists(path)
                         || !fsChange.IsDirectory && Directory.Exists(path))
                     {
                         // delete and retry

@@ -1,7 +1,7 @@
-﻿using System;
+﻿using DevSyncLib.Logger;
+using System;
 using System.IO;
 using System.Text;
-using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
@@ -11,9 +11,9 @@ namespace DevSyncLib.Command
 
         protected BinaryWriter BinaryWriter;
 
-        private const int BUFFER_LENGTH = 65536;
-        private readonly byte[] _buffer = new byte[BUFFER_LENGTH];
-        
+        private const int BufferLength = 65536;
+        private readonly byte[] _buffer = new byte[BufferLength];
+
         public Writer(Stream stream, ILogger logger)
         {
             _logger = logger;
@@ -149,7 +149,7 @@ namespace DevSyncLib.Command
 
                     try
                     {
-                        read = fs.Read(_buffer, 0, BUFFER_LENGTH);
+                        read = fs.Read(_buffer, 0, BufferLength);
                         if (read <= 0)
                         {
                             break;
@@ -166,7 +166,7 @@ namespace DevSyncLib.Command
                     WriteInt(read);
                     BinaryWriter.Write(_buffer, 0, read);
                     written += read;
-                } while (read == BUFFER_LENGTH);
+                } while (read == BufferLength);
 
                 // check written
                 if (written != fsSenderChange.Length)

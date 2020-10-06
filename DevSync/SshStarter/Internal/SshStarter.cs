@@ -1,11 +1,11 @@
-﻿using System;
-using DevSync.Cryptography;
+﻿using DevSync.Cryptography;
 using DevSyncLib;
 using DevSyncLib.Logger;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using Renci.SshNet.Security.Cryptography.Ciphers;
 using Renci.SshNet.Security.Cryptography.Ciphers.Modes;
+using System;
 
 namespace DevSync.SshStarter.Internal
 {

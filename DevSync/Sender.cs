@@ -1,13 +1,13 @@
-﻿using System;
+﻿using DevSyncLib;
+using DevSyncLib.Command;
+using DevSyncLib.Logger;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DevSyncLib;
-using DevSyncLib.Command;
-using DevSyncLib.Logger;
 using Task = System.Threading.Tasks.Task;
 
 namespace DevSync
@@ -62,7 +62,7 @@ namespace DevSync
                 _timeSpan += timeSpan;
                 if (_totalCount == 1 && changes.Count == 1)
                 {
-                    _lastChange =  changes.First().ToString();
+                    _lastChange = changes.First().ToString();
                 }
                 if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > ReportInterval)
                 {
@@ -102,7 +102,7 @@ namespace DevSync
                 throw new SyncException($"Invalid source path: {_srcPath}");
             }
 
-            _excludeList = new FileMaskList(); 
+            _excludeList = new FileMaskList();
             _excludeList.SetList(syncOptions.ExcludeList);
 
             _changes = new Dictionary<string, FsSenderChange>();
@@ -216,7 +216,7 @@ namespace DevSync
                     if (!_changes.ContainsKey(srcEntry.Path))
                     {
                         // add to changes (no replace)
-                        if (!srcEntry.Compare(destEntry))
+                        if (!srcEntry.Equals(destEntry))
                         {
                             itemsCount++;
                             if (!srcEntry.IsDirectory)
@@ -250,7 +250,7 @@ namespace DevSync
                 $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(changesSize)} to send");
             UpdateHasWork();
         }
-        
+
         private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
             // ignore empty path
@@ -283,7 +283,7 @@ namespace DevSync
         {
             return FsEntry.NormalizePath(Path.GetRelativePath(_srcPath, fullPath));
         }
-        
+
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
             var path = GetPath(e.FullPath);
@@ -357,7 +357,7 @@ namespace DevSync
             {
                 // old file is excluded -> send change with withSubdirectories
                 if (_excludeList.IsMatch(oldPath))
-                {                    
+                {
                     AddChange(FsSenderChange.CreateChange(path), withSubdirectories: true);
                 }
                 else
@@ -415,13 +415,13 @@ namespace DevSync
                     }
                     else
                     {
-                        timeout = readyTimeout - (int) elapsed;
+                        timeout = readyTimeout - (int)elapsed;
                     }
                 }
 
                 if (waitForGit)
                 {
-                    WaitHandle.WaitAny(new WaitHandle[] {_hasWorkEvent, _gitIsReadyEvent}, timeout);
+                    WaitHandle.WaitAny(new WaitHandle[] { _hasWorkEvent, _gitIsReadyEvent }, timeout);
                 }
                 else
                 {

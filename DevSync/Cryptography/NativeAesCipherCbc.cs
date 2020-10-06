@@ -4,7 +4,7 @@ namespace DevSync.Cryptography
 {
     public class NativeAesCipherCbc : NativeBlockCipher
     {
-        public NativeAesCipherCbc(byte[] key, byte[] iv) : base(key, iv,16, null)
+        public NativeAesCipherCbc(byte[] key, byte[] iv) : base(key, iv, 16, null)
         {
         }
 

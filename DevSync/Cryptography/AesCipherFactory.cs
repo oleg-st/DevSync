@@ -1,6 +1,6 @@
-﻿using System;
-using DevSync.Cryptography.AesNi;
+﻿using DevSync.Cryptography.AesNi;
 using Renci.SshNet.Security.Cryptography;
+using System;
 
 namespace DevSync.Cryptography
 {

@@ -1,8 +1,8 @@
-﻿using System;
+﻿using DevSyncLib.Logger;
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using DevSyncLib.Logger;
 
 namespace DevSyncLib.Command
 {
@@ -12,8 +12,8 @@ namespace DevSyncLib.Command
 
         protected BinaryReader BinaryReader;
 
-        private const int BUFFER_LENGTH = 65536;
-        private readonly byte[] _buffer = new byte[BUFFER_LENGTH];
+        private const int BufferLength = 65536;
+        private readonly byte[] _buffer = new byte[BufferLength];
 
         // detect shebang (#!) to make file executable
         private static readonly bool PlatformHasChmod = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -78,7 +78,7 @@ namespace DevSyncLib.Command
 
         public FsChange ReadFsChange()
         {
-            var changeType = (FsChangeType) ReadByte();
+            var changeType = (FsChangeType)ReadByte();
             if (changeType == FsChangeType.EmptyMarker)
             {
                 return FsChange.Empty;
@@ -133,9 +133,9 @@ namespace DevSyncLib.Command
             try
             {
                 long written = 0;
-                int chunkSize;
                 try
                 {
+                    int chunkSize;
                     do
                     {
                         chunkSize = ReadInt();
@@ -148,7 +148,7 @@ namespace DevSyncLib.Command
                         var remain = chunkSize;
                         while (remain > 0)
                         {
-                            var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
+                            var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
                             if (read <= 0)
                             {
                                 throw new EndOfStreamException(
@@ -255,7 +255,7 @@ namespace DevSyncLib.Command
                 var remain = chunkSize;
                 while (remain > 0)
                 {
-                    var read = BinaryReader.Read(_buffer, 0, Math.Min(BUFFER_LENGTH, remain));
+                    var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
                     if (read == 0)
                     {
                         throw new EndOfStreamException();

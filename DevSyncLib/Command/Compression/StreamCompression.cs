@@ -2,7 +2,7 @@
 
 namespace DevSyncLib.Command.Compression
 {
-    public abstract class StreamCompression<T> : ICompression where T: Stream
+    public abstract class StreamCompression<T> : ICompression where T : Stream
     {
         protected abstract T CreateCompressStream(Stream stream);
 

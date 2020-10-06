@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
-using DevSyncLib.Logger;
+﻿using DevSyncLib.Logger;
+using System.Collections.Generic;
 
 namespace DevSyncLib.Command
 {

@@ -1,8 +1,8 @@
-﻿using System;
+﻿using DevSyncLib.Command;
+using DevSyncLib.Logger;
+using System;
 using System.IO;
 using System.Reflection;
-using DevSyncLib.Command;
-using DevSyncLib.Logger;
 
 namespace DevSyncAgent
 {

@@ -8,7 +8,8 @@ namespace DevSyncLib.Command.Compression
         private readonly int _quality;
         private readonly int _window;
 
-        public BrotliCompression(int quality, int window)
+        // fastest with window 1MB same as chunk size
+        public BrotliCompression(int quality = 0, int window = 20)
         {
             _quality = quality;
             _window = window;
@@ -16,7 +17,7 @@ namespace DevSyncLib.Command.Compression
 
         public bool TryCompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written)
         {
-            return BrotliEncoder.TryCompress(new ReadOnlySpan<byte>(source, sourceOffset, sourceLength), 
+            return BrotliEncoder.TryCompress(new ReadOnlySpan<byte>(source, sourceOffset, sourceLength),
                 new Span<byte>(destination, destinationOffset, destinationLength), out written, _quality, _window);
         }
 

@@ -19,7 +19,7 @@ namespace DevSync.Cryptography.AesNi
         {
             // pre calculate increment vectors
             _incrementVectors = new Vector128<byte>[Size];
-            var vector = Vector128.Create((byte) 1);
+            var vector = Vector128.Create((byte)1);
             for (var i = 0; i < Size; i++)
             {
                 _incrementVectors[i] = vector;

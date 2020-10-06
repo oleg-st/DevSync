@@ -1,6 +1,6 @@
-﻿using System;
+﻿using DevSyncLib;
+using System;
 using System.Text.RegularExpressions;
-using DevSyncLib;
 
 namespace DevSync
 {

@@ -3,7 +3,7 @@ using System.IO;
 
 namespace DevSyncLib
 {
-    public struct FsEntry
+    public struct FsEntry : IEquatable<FsEntry>
     {
         public bool IsDirectory => Length == -1;
         public string Path;
@@ -18,7 +18,7 @@ namespace DevSyncLib
             // remove all "./" from beginning
             int index = 0;
             int length = normalizedPath.Length;
-            while (index < length && normalizedPath[index] == '.' && 
+            while (index < length && normalizedPath[index] == '.' &&
                    (index + 1 >= length || normalizedPath[index + 1] == '/'))
             {
                 index++;
@@ -36,21 +36,21 @@ namespace DevSyncLib
             return Math.Abs(dt1.Subtract(dt2).TotalSeconds) < 1;
         }
 
-        public bool Compare(FsEntry other)
-        {
-            // TODO: we don't compare dates for directories
-            return Path == other.Path && Length == other.Length && (IsDirectory || CompareDates(LastWriteTime, other.LastWriteTime));
-        }
-
         public static FsEntry FromFsInfo(string path, FileSystemInfo fsInfo, bool withInfo)
         {
             return new FsEntry
             {
                 LastWriteTime = withInfo ? fsInfo.LastWriteTime : DateTime.MinValue,
                 Path = NormalizePath(path),
-                Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 : 
+                Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 :
                     fsInfo is FileInfo ? 0 : -1
             };
+        }
+
+        public bool Equals(FsEntry other)
+        {
+            // TODO: we don't compare dates for directories
+            return Path == other.Path && Length == other.Length && (IsDirectory || CompareDates(LastWriteTime, other.LastWriteTime));
         }
     }
 }

@@ -65,7 +65,7 @@ namespace DevSyncLib
             return true;
         }
 
-        private static unsafe bool MatchMask(char* textStart, char* textEnd,  Mask mask)
+        private static unsafe bool MatchMask(char* textStart, char* textEnd, Mask mask)
         {
             if (mask.HasSlash)
             {
@@ -95,12 +95,12 @@ namespace DevSyncLib
          *
          * Modified
          */
-        private static unsafe bool MatchTextMask(char *textStart, char *textEnd, Mask mask)
+        private static unsafe bool MatchTextMask(char* textStart, char* textEnd, Mask mask)
         {
-            char *text1Backup = null;
+            char* text1Backup = null;
             char* glob1Backup = null;
 
-            char *text2Backup = null;
+            char* text2Backup = null;
             char* glob2Backup = null;
 
             fixed (char* globStart = mask.Value)
@@ -233,7 +233,7 @@ namespace DevSyncLib
                 fixed (char* pathStart = path)
                 {
                     var pathEnd = pathStart + path.Length;
-                    return !MatchTextMasks(pathStart, pathEnd, _negativeMasks) && 
+                    return !MatchTextMasks(pathStart, pathEnd, _negativeMasks) &&
                            MatchTextMasks(pathStart, pathEnd, _masks);
                 }
             }

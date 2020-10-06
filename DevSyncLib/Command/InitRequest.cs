@@ -1,9 +1,9 @@
-﻿using System.Collections.Generic;
-using DevSyncLib.Logger;
+﻿using DevSyncLib.Logger;
+using System.Collections.Generic;
 
 namespace DevSyncLib.Command
 {
-    public  class InitRequest : Packet
+    public class InitRequest : Packet
     {
         public override short Signature => 1;
         public AgentOptions AgentOptions;
