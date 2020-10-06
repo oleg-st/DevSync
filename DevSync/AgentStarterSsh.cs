@@ -4,7 +4,6 @@ using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using ICSharpCode.SharpZipLib.Tar;
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -159,7 +158,7 @@ namespace DevSync
 
         protected void DoDeployAgent(ISshStarter sshStarter, string path)
         {
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             var tarBytes = CreateTarForAgent();
             using var sshCommand = sshStarter.RunCommand($"mkdir -p {path} && tar xf - -C {path}");
             lock (this)
@@ -222,7 +221,7 @@ namespace DevSync
                 Logger.Log($"Your public key has been saved in {publicKeyPath}");
             }
             var publicKey = File.ReadAllText(publicKeyPath).Trim();
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             using var sshCommand = sshStarter.RunCommand($"mkdir -p .ssh && chmod 700 .ssh && echo {publicKey} >> .ssh/authorized_keys && chmod 600 .ssh/authorized_keys");
             lock (this)
             {

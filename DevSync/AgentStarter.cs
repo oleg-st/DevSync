@@ -3,7 +3,6 @@ using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading;
@@ -66,7 +65,7 @@ namespace DevSync
 
             try
             {
-                var sw = Stopwatch.StartNew();
+                var sw = SlimStopwatch.StartNew();
                 SetAgentExitCode(0, null);
                 DoStart();
                 IsStarted = true;
@@ -88,7 +87,7 @@ namespace DevSync
             }
             CancellationTokenSource.Token.ThrowIfCancellationRequested();
 
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             var response = SendCommandInternal<InitResponse>(new InitRequest(Logger)
             {
                 AgentOptions = new AgentOptions

@@ -1,6 +1,5 @@
 ﻿using DevSyncLib.Command.Compression;
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,18 +36,19 @@ namespace DevSyncLib.Command
             private int _chunkLength;
             private readonly byte[] _chunkBytes = new byte[ChunkSize + LengthSize];
             private readonly byte[] _chunkCompressedBytes;
-            private Stopwatch _flushStopwatch;
+            private SlimStopwatch _flushStopwatch;
             // flush every 500ms (so agent would have some data to process instead of waiting)
             public const int FlushTimeout = 500;
             // compress chunk if length is more than
             public const int CompressionThreshold = 1024;
 
-            public bool TimedOut => _flushStopwatch != null && _flushStopwatch.ElapsedMilliseconds >= FlushTimeout;
+            public bool TimedOut => _flushStopwatch.IsRunning && _flushStopwatch.ElapsedMilliseconds >= FlushTimeout;
 
             public ChunkWriteStreamFlusher(Stream stream, ICompression compression)
             {
                 _stream = stream;
                 _compression = compression;
+                _flushStopwatch = SlimStopwatch.Create();
 
                 if (_compression != null)
                 {
@@ -148,7 +148,7 @@ namespace DevSyncLib.Command
                         _flushException = exception;
                     }
 
-                    _flushStopwatch = Stopwatch.StartNew();
+                    _flushStopwatch.Start();
                     _needToFlush = false;
                 }
                 UpdateHasWork();

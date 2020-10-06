@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.IO;
+﻿using System.IO;
 
 namespace DevSyncLib
 {
@@ -8,7 +7,7 @@ namespace DevSyncLib
         public bool NeedToResolve { get; private set; }
         // change is expired -> ignore it
         public bool Expired;
-        private Stopwatch _readyStopwatch;
+        private SlimStopwatch _readyStopwatch;
         // change is ready after this timeout
         public const int ReadyTimeoutMs = 100;
         // wait for this timeout if change is not ready
@@ -22,18 +21,14 @@ namespace DevSyncLib
         private FsSenderChange(FsChangeType changeType, string path, bool isReady = true) : base(changeType, path)
         {
             // start stopwatch if not ready
-            if (!isReady)
-            {
-                _readyStopwatch = Stopwatch.StartNew();
-            }
+            _readyStopwatch = SlimStopwatch.Create(!isReady);
         }
 
         public bool IsReady
         {
             get
             {
-                // no stop watch
-                if (_readyStopwatch == null)
+                if (!_readyStopwatch.IsRunning)
                 {
                     return true;
                 }
@@ -44,8 +39,8 @@ namespace DevSyncLib
                     return false;
                 }
 
-                // elapsed, remove stopwatch
-                _readyStopwatch = null;
+                // elapsed, stop stopwatch
+                _readyStopwatch.Stop();
                 return true;
             }
         }

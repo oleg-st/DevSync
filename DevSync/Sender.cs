@@ -3,7 +3,6 @@ using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -40,7 +39,7 @@ namespace DevSync
 
         protected class SentReporter
         {
-            private readonly Stopwatch _stopwatch;
+            private SlimStopwatch _stopwatch;
             private int _totalCount;
             private long _totalSize;
             private readonly ILogger _logger;
@@ -51,7 +50,7 @@ namespace DevSync
             public SentReporter(ILogger logger)
             {
                 _logger = logger;
-                _stopwatch = new Stopwatch();
+                _stopwatch = SlimStopwatch.Create();
                 _timeSpan = TimeSpan.Zero;
             }
 
@@ -85,7 +84,7 @@ namespace DevSync
                 _totalCount = 0;
                 _totalSize = 0;
                 _timeSpan = TimeSpan.Zero;
-                _stopwatch.Restart();
+                _stopwatch.Start();
             }
         }
 
@@ -143,7 +142,7 @@ namespace DevSync
 
         private void Scan()
         {
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             List<FsEntry> srcList = null;
             Dictionary<string, FsEntry> destList;
             /*
@@ -170,7 +169,7 @@ namespace DevSync
                 {
                     try
                     {
-                        var swScanSource = Stopwatch.StartNew();
+                        var swScanSource = SlimStopwatch.StartNew();
                         var scanDirectory =
                             new ScanDirectory(_logger, _excludeList, cancellationToken: cancellationToken);
                         srcList = scanDirectory.ScanPath(_srcPath).ToList();
@@ -185,7 +184,7 @@ namespace DevSync
 
                 try
                 {
-                    var swScanDestination = Stopwatch.StartNew();
+                    var swScanDestination = SlimStopwatch.StartNew();
                     // scan destination
                     var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
                     destList = response.FileList.ToDictionary(x => x.Path, y => y);
@@ -265,6 +264,16 @@ namespace DevSync
                 {
                     oldFsChange.Expired = true;
                 }
+
+                if (fsSenderChange.ChangeType == FsChangeType.Rename &&
+                    _changes.TryGetValue(fsSenderChange.OldPath, out var oldPathFsChange))
+                {
+                    // rename -> delete old, create new
+                    oldPathFsChange.Expired = true;
+                    _changes[fsSenderChange.OldPath] = FsSenderChange.CreateRemove(fsSenderChange.OldPath);
+                    fsSenderChange = FsSenderChange.CreateChange(fsSenderChange.Path);
+                }
+
                 _changes[fsSenderChange.Path] = fsSenderChange;
             }
 
@@ -390,7 +399,7 @@ namespace DevSync
         {
             const int readyTimeout = 300;
             var waitForReady = true;
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             while (!HasWork)
             {
                 var timeout = Timeout.Infinite;
@@ -472,7 +481,7 @@ namespace DevSync
                 _isSending = true;
             }
 
-            var sw = Stopwatch.StartNew();
+            var sw = SlimStopwatch.StartNew();
             var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
 
