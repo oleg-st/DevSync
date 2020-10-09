@@ -14,7 +14,7 @@ namespace DevSyncLib.Command
 
         public PacketStream(Stream inputStream, Stream outputStream, ILogger logger)
         {
-            Compression = new LZ4Compression();
+            Compression = new BrotliCompression();
 
             inputStream = new ChunkReadStream(inputStream, Compression);
             outputStream = new ChunkWriteStream(outputStream, Compression);
