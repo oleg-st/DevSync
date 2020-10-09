@@ -12,7 +12,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevSyncAgent", "DevSyncAgen
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevSyncLib", "DevSyncLib\DevSyncLib.csproj", "{13AE7E94-1CF4-4ECF-B351-C4D994C5FFFE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevSyncTest", "DevSyncTest\DevSyncTest.csproj", "{09778D73-0005-40CA-B96C-D3C7E34C3E62}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevSyncTest", "DevSyncTest\DevSyncTest.csproj", "{09778D73-0005-40CA-B96C-D3C7E34C3E62}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevSyncBenchmark", "DevSyncBenchmark\DevSyncBenchmark.csproj", "{C2CC0E90-AA37-43AF-B403-7C3D563B899B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -36,6 +38,10 @@ Global
 		{09778D73-0005-40CA-B96C-D3C7E34C3E62}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09778D73-0005-40CA-B96C-D3C7E34C3E62}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09778D73-0005-40CA-B96C-D3C7E34C3E62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C2CC0E90-AA37-43AF-B403-7C3D563B899B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C2CC0E90-AA37-43AF-B403-7C3D563B899B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C2CC0E90-AA37-43AF-B403-7C3D563B899B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C2CC0E90-AA37-43AF-B403-7C3D563B899B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
