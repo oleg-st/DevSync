@@ -39,11 +39,5 @@ namespace DevSyncTest.Command.Compression
         {
             TestCompression(new GZipCompression());
         }
-
-        [Fact]
-        public void TestLZ4()
-        {
-            TestCompression(new LZ4Compression());
-        }
     }
 }

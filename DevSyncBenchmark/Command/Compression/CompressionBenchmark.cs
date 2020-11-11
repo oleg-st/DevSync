@@ -10,7 +10,6 @@ namespace DevSyncBenchmark.Command.Compression
         private ICompression _brotliCompression;
         private ICompression _deflateCompression;
         private ICompression _gzipCompression;
-        private ICompression _lz4Compression;
 
         [GlobalSetup]
         public void Setup()
@@ -22,8 +21,7 @@ namespace DevSyncBenchmark.Command.Compression
 
             _brotliCompression = new BrotliCompression();
             _deflateCompression = new DeflateCompression();
-            _gzipCompression= new GZipCompression();
-            _lz4Compression = new LZ4Compression();
+            _gzipCompression = new GZipCompression();
         }
 
         private void TestCompression(ICompression compression)
@@ -53,12 +51,6 @@ namespace DevSyncBenchmark.Command.Compression
         public void Gzip()
         {
             TestCompression(_gzipCompression);
-        }
-
-        [Benchmark]
-        public void LZ4()
-        {
-            TestCompression(_lz4Compression);
         }
     }
 }
