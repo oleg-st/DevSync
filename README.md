@@ -12,7 +12,7 @@ Download `DevSync.zip` file from [Releases](https://github.com/oleg-st/DevSync/r
 Run using `dotnet DevSync.dll` (all platforms) or `DevSync` (windows).  
 
 Mac OS (brew):  
-`brew cask install dotnet`  
+`brew install --cask dotnet`  
 `brew install oleg-st/devsync/devsync`  
 Run using the `DevSync` command  
 
