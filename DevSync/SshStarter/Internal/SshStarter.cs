@@ -117,6 +117,10 @@ namespace DevSync.SshStarter.Internal
                 {
                     _privateKeyFile = new PrivateKeyFile(KeyFilePath, GetPassword("Enter passphrase for key: "));
                 }
+                catch (SshException sshException)
+                {
+                    throw new SyncException(sshException.Message);
+                }
             }
 
             return _privateKeyFile;
