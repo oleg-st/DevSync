@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Oleg Stepanischev</Authors>
-    <Version>0.32</Version>
+    <Version>0.33</Version>
     <Copyright>$(Authors)</Copyright>
     <Company>$(Authors)</Company>
     <AssemblyVersion>$(Version)</AssemblyVersion>
