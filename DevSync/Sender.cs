@@ -272,6 +272,7 @@ namespace DevSync
                     oldPathFsChange.Expired = true;
                     _changes[fsSenderChange.OldPath] = FsSenderChange.CreateRemove(fsSenderChange.OldPath);
                     fsSenderChange = FsSenderChange.CreateChange(fsSenderChange.Path);
+                    withSubdirectories = true;
                 }
 
                 _changes[fsSenderChange.Path] = fsSenderChange;
