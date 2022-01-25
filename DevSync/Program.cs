@@ -103,7 +103,7 @@ namespace DevSync
 
         private static void Main(string[] args)
         {
-            var logger = new ConsoleLogger();
+            var logger = new NonBlockingConsoleLogger();
 
             var parser = new Parser(with =>
             {

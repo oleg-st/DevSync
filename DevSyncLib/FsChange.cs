@@ -13,14 +13,22 @@ namespace DevSyncLib
         // rename
         public string OldPath;
         public long BodySize => HasBody ? Length : 0;
-        public bool HasBody => ChangeType == FsChangeType.Change && !IsDirectory;
+        public bool HasBody => IsChange && !IsDirectory;
+
+        public static readonly FsChange Empty = new FsChange(FsChangeType.EmptyMarker, null);
 
         public bool IsEmpty => ChangeType == FsChangeType.EmptyMarker;
-        public static readonly FsChange Empty = new FsChange(FsChangeType.EmptyMarker, null);
+
+        // need body
+        public bool IsChange => ChangeType == FsChangeType.Change || ChangeType == FsChangeType.ChangeAndRename;
+        // has old path
+        public bool IsRename => ChangeType == FsChangeType.Rename || ChangeType == FsChangeType.ChangeAndRename;
+
+        public bool IsRemove => ChangeType == FsChangeType.Remove;
 
         public override string ToString()
         {
-            return $"{ChangeType} {(ChangeType == FsChangeType.Rename ? $"{OldPath} -> " : "")}{Path}{(ChangeType == FsChangeType.Change && Length >= 0 ? $", {Length}" : "")}";
+            return $"{ChangeType} {(IsRename ? $"{OldPath} -> " : "")}{Path}{(ChangeType == FsChangeType.Change && Length >= 0 ? $", {Length}" : "")}";
         }
 
         public bool Equals(FsChange other)
@@ -32,6 +40,10 @@ namespace DevSyncLib
                                        LastWriteTime.Equals(other.LastWriteTime),
                 FsChangeType.Remove => Path == other.Path,
                 FsChangeType.Rename => Path == other.Path && OldPath == other.OldPath,
+                FsChangeType.ChangeAndRename => Path == other.Path &&
+                                                OldPath == other.OldPath &&
+                                                Length == other.Length &&
+                                                LastWriteTime.Equals(other.LastWriteTime),
                 _ => true
             };
         }

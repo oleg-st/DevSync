@@ -10,13 +10,12 @@ namespace DevSync.Cryptography
 
         protected override SymmetricAlgorithm Create()
         {
-            return new AesCryptoServiceProvider
-            {
-                Mode = CipherMode.CBC,
-                Padding = PaddingMode.None,
-                BlockSize = BlockSize * 8,
-                KeySize = Key.Length * 8
-            };
+            var aes = Aes.Create();
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.None;
+            aes.BlockSize = BlockSize * 8;
+            aes.KeySize = Key.Length * 8;
+            return aes;
         }
     }
 }

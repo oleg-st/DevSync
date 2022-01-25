@@ -1,7 +1,13 @@
-﻿namespace DevSyncLib.Logger
+﻿using System;
+
+namespace DevSyncLib.Logger
 {
-    public interface ILogger
+    public interface ILogger : IDisposable
     {
+        bool IsDebug => Level <= LogLevel.Debug;
+
+        LogLevel Level { get; set; }
+
         void Log(string text, LogLevel level = LogLevel.Info);
 
         void Pause();

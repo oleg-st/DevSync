@@ -3,29 +3,21 @@ using System.IO;
 
 namespace DevSyncLib.Logger
 {
-    public class FileLogger : ILogger
+    public class FileLogger : BaseLogger
     {
         private readonly string _filename;
 
-        public FileLogger(string filename)
+        public FileLogger(string filename, LogLevel level = DefaultLevel) : base(level)
         {
             _filename = filename;
         }
 
-        public void Log(string text, LogLevel level)
+        protected override void AddLog(string text, LogLevel level)
         {
             lock (this)
             {
                 File.AppendAllText(_filename, $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}\n");
             }
-        }
-
-        public void Pause()
-        {
-        }
-
-        public void Resume()
-        {
         }
     }
 }

@@ -1,15 +1,15 @@
 ﻿using System;
-using System.Threading;
 
 namespace DevSyncLib.Logger
 {
-    public class ConsoleLogger : ILogger
+    public class ConsoleLogger : BaseLogger
     {
-        private readonly ManualResetEvent _noPauseEvent = new ManualResetEvent(true);
-
-        public void Log(string text, LogLevel level)
+        public ConsoleLogger(LogLevel level = DefaultLevel) : base(level)
         {
-            _noPauseEvent.WaitOne();
+        }
+
+        protected override void AddLog(string text, LogLevel level)
+        {
             var toLog = $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}";
             if (level == LogLevel.Error)
             {
@@ -19,16 +19,6 @@ namespace DevSyncLib.Logger
             {
                 Console.WriteLine(toLog);
             }
-        }
-
-        public void Pause()
-        {
-            _noPauseEvent.Reset();
-        }
-
-        public void Resume()
-        {
-            _noPauseEvent.Set();
         }
     }
 }

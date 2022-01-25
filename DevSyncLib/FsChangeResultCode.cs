@@ -4,6 +4,7 @@
     {
         Ok,
         Error,
-        SenderError
+        SenderError,
+        None
     }
 }

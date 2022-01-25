@@ -85,16 +85,15 @@ namespace DevSyncLib.Command
             }
 
             var fsChange = new FsChange(changeType, ReadString());
-            switch (fsChange.ChangeType)
+            if (fsChange.IsChange)
             {
-                case FsChangeType.Change:
-                    fsChange.Length = ReadLong();
-                    fsChange.IsDirectory = fsChange.Length == -1;
-                    fsChange.LastWriteTime = ReadDateTime();
-                    break;
-                case FsChangeType.Rename:
-                    fsChange.OldPath = ReadString();
-                    break;
+                fsChange.Length = ReadLong();
+                fsChange.IsDirectory = fsChange.Length == -1;
+                fsChange.LastWriteTime = ReadDateTime();
+            }
+            if (fsChange.IsRename)
+            {
+                fsChange.OldPath = ReadString();
             }
             return fsChange;
         }

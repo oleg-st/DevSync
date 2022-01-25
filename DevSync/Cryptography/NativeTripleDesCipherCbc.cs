@@ -10,13 +10,12 @@ namespace DevSync.Cryptography
 
         protected override SymmetricAlgorithm Create()
         {
-            return new TripleDESCryptoServiceProvider
-            {
-                Mode = CipherMode.CBC,
-                Padding = PaddingMode.None,
-                BlockSize = BlockSize * 8,
-                KeySize = Key.Length * 8
-            };
+            var tripleDes = TripleDES.Create();
+            tripleDes.Mode = CipherMode.CBC;
+            tripleDes.Padding = PaddingMode.None;
+            tripleDes.BlockSize = BlockSize * 8;
+            tripleDes.KeySize = Key.Length * 8;
+            return tripleDes;
         }
     }
 }

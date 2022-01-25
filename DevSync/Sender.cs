@@ -1,4 +1,5 @@
-﻿using DevSyncLib;
+﻿using DevSync.Data;
+using DevSyncLib;
 using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using System;
@@ -23,7 +24,7 @@ namespace DevSync
 
         private readonly FileMaskList _excludeList;
 
-        private readonly Dictionary<string, FsSenderChange> _changes;
+        private readonly Changes _changes;
         private readonly AgentStarter _agentStarter;
 
         private const string GitIndexLockFilename = ".git/index.lock";
@@ -104,7 +105,7 @@ namespace DevSync
             _excludeList = new FileMaskList();
             _excludeList.SetList(syncOptions.ExcludeList);
 
-            _changes = new Dictionary<string, FsSenderChange>();
+            _changes = new Changes();
             _needToScan = true;
             _agentStarter = AgentStarter.Create(syncOptions, _logger);
             _logger.Log($"Sync {syncOptions}");
@@ -252,6 +253,11 @@ namespace DevSync
 
         private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
         {
+            if (_logger.IsDebug)
+            {
+                _logger.Log($"AddChange {fsSenderChange}", LogLevel.Debug);
+            }
+
             // ignore empty path
             if (string.IsNullOrEmpty(fsSenderChange.Path))
             {
@@ -263,19 +269,56 @@ namespace DevSync
                 if (_changes.TryGetValue(fsSenderChange.Path, out var oldFsChange))
                 {
                     oldFsChange.Expired = true;
+                    _changes.Remove(oldFsChange.Path);
+                    // Rename + Change -> Combine
+                    if (fsSenderChange.IsChange && oldFsChange.IsRename)
+                    {
+                        fsSenderChange.Combine(oldFsChange);
+                    }
                 }
 
-                if (fsSenderChange.ChangeType == FsChangeType.Rename &&
-                    _changes.TryGetValue(fsSenderChange.OldPath, out var oldPathFsChange))
+                _changes.Add(fsSenderChange.Path, fsSenderChange);
+
+                if (fsSenderChange.IsRename)
                 {
-                    // rename -> delete old, create new
-                    oldPathFsChange.Expired = true;
-                    _changes[fsSenderChange.OldPath] = FsSenderChange.CreateRemove(fsSenderChange.OldPath);
-                    fsSenderChange = FsSenderChange.CreateChange(fsSenderChange.Path);
-                    withSubdirectories = true;
-                }
+                    // replace changes inside OldPath to Path
+                    var oldPathPrefix = fsSenderChange.OldPath + "/";
+                    var insideOldPathFsChanges = _changes.Values
+                        .Where(fsChange => !fsChange.Opened &&
+                            (((fsChange.IsChange || fsChange.IsRename) && fsChange.Path.StartsWith(oldPathPrefix)) 
+                            || (fsChange.IsRename && fsChange.OldPath.StartsWith(oldPathPrefix)))
+                        )
+                        .ToList();
 
-                _changes[fsSenderChange.Path] = fsSenderChange;
+                    var index = oldPathPrefix.Length - 1;
+                    foreach (var insideOldPathFsChange in insideOldPathFsChanges)
+                    {
+                        insideOldPathFsChange.Expired = true;
+                        _changes.Remove(insideOldPathFsChange.Path);
+
+                        // update Path
+                        var newPath = insideOldPathFsChange.Path.StartsWith(oldPathPrefix)
+                            ? string.Concat(fsSenderChange.Path, insideOldPathFsChange.Path.AsSpan(index))
+                            : insideOldPathFsChange.Path;
+
+                        var newChange = FsSenderChange.CreateWithPath(insideOldPathFsChange, newPath);
+                        // update OldPath
+                        if (newChange.IsRename && newChange.OldPath.StartsWith(oldPathPrefix))
+                        {
+                            newChange.OldPath = string.Concat(fsSenderChange.Path, newChange.OldPath.AsSpan(index));
+                        }
+                        AddChange(newChange);
+                    }
+
+                    // expire and combine change with OldPath
+                    if (_changes.TryGetValue(fsSenderChange.OldPath, out var oldPathFsChange) &&
+                        !oldPathFsChange.Opened && oldPathFsChange.IsChange)
+                    {
+                        oldPathFsChange.Expired = true;
+                        // Change + Rename -> Combine
+                        fsSenderChange.Combine(oldPathFsChange);
+                    }
+                }
             }
 
             if (withSubdirectories)
@@ -482,6 +525,11 @@ namespace DevSync
                 _isSending = true;
             }
 
+            if (_logger.IsDebug)
+            {
+                _logger.Log($"Sending: {_applyRequest.Changes.Select(k => k.ToString()).Aggregate(new System.Text.StringBuilder(), (current, next) => current.Append(current.Length == 0 ? "" : ", ").Append(next))}", LogLevel.Debug);
+            }
+
             var sw = SlimStopwatch.StartNew();
             var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
             var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
@@ -494,28 +542,43 @@ namespace DevSync
                 {
                     if (!fsChange.Expired)
                     {
-                        _changes.Remove(fsChange.Path);
-                        if (responseResult.TryGetValue(fsChange.Path, out var fsChangeResult))
+                        if (fsChange.Vanished)
                         {
-                            if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
+                            if (_logger.IsDebug)
                             {
-                                var withSubdirectories = false;
-                                // ignore sender errors: just resend
-                                if (fsChangeResult.ResultCode != FsChangeResultCode.SenderError)
+                                _logger.Log($"Vanished change {fsChange.Path}", LogLevel.Debug);
+                            }
+                            fsChange.DelayVanished();
+                        }
+                        else
+                        {
+                            _changes.Remove(fsChange.Path);
+                            if (responseResult.TryGetValue(fsChange.Path, out var fsChangeResult))
+                            {
+                                if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
                                 {
-                                    // if rename failed -> send change with withSubdirectories
-                                    if (fsChange.ChangeType == FsChangeType.Rename)
+                                    var withSubdirectories = false;
+                                    // ignore sender errors: just resend
+                                    if (fsChangeResult.ResultCode != FsChangeResultCode.SenderError)
                                     {
-                                        withSubdirectories = true;
+                                        // if rename failed -> send change with withSubdirectories
+                                        if (fsChange.IsRename)
+                                        {
+                                            if (_logger.IsDebug)
+                                            {
+                                                _logger.Log($"Rename to change {fsChange.Path} {fsChangeResult.ErrorMessage}", LogLevel.Debug);
+                                            }
+                                            withSubdirectories = true;
+                                        }
+                                        else
+                                        {
+                                            hasErrors = true;
+                                            _logger.Log(
+                                                $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
+                                        }
                                     }
-                                    else
-                                    {
-                                        hasErrors = true;
-                                        _logger.Log(
-                                            $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
-                                    }
+                                    AddChange(FsSenderChange.CreateChange(fsChange.Path), false, withSubdirectories);
                                 }
-                                AddChange(FsSenderChange.CreateChange(fsChange.Path), false, withSubdirectories);
                             }
                         }
                     }
@@ -530,6 +593,13 @@ namespace DevSync
                 }
             }
 
+            if (_logger.IsDebug)
+            {
+                foreach (var change in _applyRequest.SentChanges)
+                {
+                    _logger.Log($"Sent {change}", LogLevel.Debug);
+                }
+            }
             _sentReporter.Report(_applyRequest.SentChanges, _applyRequest.SentChangesSize, sw.Elapsed);
             _applyRequest.ClearChanges();
             UpdateHasWork();
@@ -660,6 +730,7 @@ namespace DevSync
         {
             _agentStarter.Dispose();
             _fileSystemWatcher?.Dispose();
+            _logger.Dispose();
         }
     }
 }

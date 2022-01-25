@@ -53,17 +53,15 @@ namespace DevSyncBenchmark.Cryptography
             RunCipher(_aesNiCipherCtr);
         }
 
-
         [Benchmark]
         public void AesNiCipherCbc()
         {
             RunCipher(_aesNiCipherCbc);
         }
 
-
         private void RunCipher(Cipher cipher)
         {
             cipher.Encrypt(_data);
-}
+        }
     }
 }

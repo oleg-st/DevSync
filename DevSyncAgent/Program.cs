@@ -11,7 +11,7 @@ namespace DevSyncAgent
         static void Main(string[] args)
         {
             var assemblyPath = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
-            var logger = new FileLogger(Path.Combine(assemblyPath, "devsync.log"));
+            using var logger = new FileLogger(Path.Combine(assemblyPath, "devsync.log"));
             try
             {
                 if (!Console.IsInputRedirected || !Console.IsOutputRedirected)

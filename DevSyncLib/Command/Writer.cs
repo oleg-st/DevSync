@@ -75,15 +75,14 @@ namespace DevSyncLib.Command
                 return;
             }
             WriteString(fsChange.Path);
-            switch (fsChange.ChangeType)
+            if (fsChange.IsChange)
             {
-                case FsChangeType.Change:
-                    WriteLong(fsChange.IsDirectory ? -1 : fsChange.Length);
-                    WriteDateTime(fsChange.LastWriteTime);
-                    break;
-                case FsChangeType.Rename:
-                    WriteString(fsChange.OldPath);
-                    break;
+                WriteLong(fsChange.IsDirectory ? -1 : fsChange.Length);
+                WriteDateTime(fsChange.LastWriteTime);
+            }
+            if (fsChange.IsRename)
+            {
+                WriteString(fsChange.OldPath);
             }
         }
 
@@ -118,8 +117,8 @@ namespace DevSyncLib.Command
                 {
                     if (ex is FileNotFoundException || ex is DirectoryNotFoundException)
                     {
-                        // file vanished -> ignore it
-                        fsSenderChange.Expired = true;
+                        // file vanished
+                        fsSenderChange.Vanished = true;
                     }
                     else
                     {
@@ -136,6 +135,7 @@ namespace DevSyncLib.Command
                 // length resolved
                 fsSenderChange.Length = fs.Length;
                 WriteFsChange(fsSenderChange);
+                fsSenderChange.Opened = true;
 
                 int read;
                 do
