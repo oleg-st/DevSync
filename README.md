@@ -13,7 +13,13 @@ Run using `dotnet DevSync.dll` (all platforms) or `DevSync` (windows).
 
 Mac OS (brew):  
 `brew install --cask dotnet`  
-`brew install oleg-st/devsync/devsync`  
+
+Install DevSync for .NET 5:  
+`brew install oleg-st/devsync/devsync5`
+
+or install DevSync for .NET 6:  
+`brew install oleg-st/devsync/devsync6`
+
 Run using the `DevSync` command  
 
 You must have private key file to use public key authentication.  
