@@ -334,6 +334,27 @@ namespace DevSync
 
         private string GetPath(string fullPath)
         {
+            // fast path
+            if (fullPath.StartsWith(_srcPath))
+            {
+                var span = fullPath.AsSpan(_srcPath.Length);
+                var index = 0;
+                var length = span.Length;
+                // skip [/\\]+
+                while (index < length && (span[index] == '/' || span[index] == '\\'))
+                {
+                    index++;
+                }
+
+                // has /
+                if (index > 0)
+                {
+                    // Slice instead of GetRelativePath
+                    return FsEntry.NormalizePath(span[index..]);
+                }
+            }
+
+            // slow path
             return FsEntry.NormalizePath(Path.GetRelativePath(_srcPath, fullPath));
         }
 

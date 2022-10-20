@@ -14,21 +14,28 @@ namespace DevSyncLib
 
         public static string NormalizePath(string path)
         {
-            var normalizedPath = path.Replace('\\', '/');
-            // remove all "./" from beginning
-            int index = 0;
-            int length = normalizedPath.Length;
-            while (index < length && normalizedPath[index] == '.' &&
-                   (index + 1 >= length || normalizedPath[index + 1] == '/'))
+            return NormalizePath(path.AsSpan());
+        }
+
+        public static string NormalizePath(ReadOnlySpan<char> span)
+        {
+            var index = 0;
+            var length = span.Length;
+
+            // skip .[/\\]*
+            while (index < length && span[index] == '.' &&
+                   (index + 1 >= length || span[index] == '/' || span[index] == '\\'))
             {
                 index++;
-                // remove '/'
-                while (index < length && normalizedPath[index] == '/')
+                // skip [/\\]+
+                while (index < length && (span[index] == '/' || span[index] == '\\'))
                 {
                     index++;
                 }
             }
-            return normalizedPath.Substring(index);
+
+            var slicedSpan = span[index..];
+            return new string(slicedSpan).Replace('\\', '/');
         }
 
         private bool CompareDates(DateTime dt1, DateTime dt2)
@@ -36,12 +43,12 @@ namespace DevSyncLib
             return Math.Abs(dt1.Subtract(dt2).TotalSeconds) < 1;
         }
 
-        public static FsEntry FromFsInfo(string path, FileSystemInfo fsInfo, bool withInfo)
+        public static FsEntry FromFsInfo(string normalizedPath, FileSystemInfo fsInfo, bool withInfo)
         {
             return new FsEntry
             {
                 LastWriteTime = withInfo ? fsInfo.LastWriteTime : DateTime.MinValue,
-                Path = NormalizePath(path),
+                Path = normalizedPath,
                 Length = withInfo ? (fsInfo as FileInfo)?.Length ?? -1 :
                     fsInfo is FileInfo ? 0 : -1
             };

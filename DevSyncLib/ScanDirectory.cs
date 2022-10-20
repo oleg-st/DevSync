@@ -62,11 +62,11 @@ namespace DevSyncLib
                         continue;
                     }
 
-                    var path = Path.Combine(relativePath, fsInfo.Name);
+                    var path = string.IsNullOrEmpty(relativePath) ? fsInfo.Name : $"{relativePath}/{fsInfo.Name}";
                     var fsEntry = FsEntry.Empty;
 
                     // skip excludes
-                    if (!_excludeList.IsMatch(FsEntry.NormalizePath(path)))
+                    if (!_excludeList.IsMatch(path))
                     {
                         // scan children
                         if (fsInfo is DirectoryInfo childDirectoryInfo)
