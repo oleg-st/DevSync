@@ -103,8 +103,6 @@ namespace DevSync
 
         private static void Main(string[] args)
         {
-            var logger = new NonBlockingConsoleLogger();
-
             var parser = new Parser(with =>
             {
                 with.AutoHelp = false;
@@ -118,6 +116,8 @@ namespace DevSync
 
             parserResult.WithParsed(options =>
             {
+                using var logger = new NonBlockingConsoleLogger();
+
                 try
                 {
                     var syncOptions = GetSyncOptions(options, logger);
@@ -134,7 +134,7 @@ namespace DevSync
                 catch (Exception ex)
                 {
                     logger.Log(ex.Message, LogLevel.Error);
-                    Environment.Exit(-1);
+                    Environment.ExitCode = -1;
                 }
             });
         }

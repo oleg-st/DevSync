@@ -9,7 +9,7 @@ namespace DevSyncLib.Command.Compression
         private readonly int _window;
 
         // fastest with window 1MB same as chunk size
-        public BrotliCompression(int quality = 0, int window = 20)
+        public BrotliCompression(int quality = 1, int window = 20)
         {
             _quality = quality;
             _window = window;
