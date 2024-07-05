@@ -40,6 +40,19 @@ namespace DevSync.Data
             }
         }
 
+        public bool Remove(TKey key, out TValue value)
+        {
+            if (Dictionary.Remove(key, out var node))
+            {
+                value = node.Value;
+                LinkedList.Remove(node);
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
         public TValue this[TKey key]
         {
             get => Dictionary[key].Value;

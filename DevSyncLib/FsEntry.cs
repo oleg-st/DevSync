@@ -14,17 +14,17 @@ namespace DevSyncLib
 
         public static string NormalizePath(string path)
         {
-            return NormalizePath(path.AsSpan());
+            return NormalizeSlash(NormalizeStart(path));
         }
 
-        public static string NormalizePath(ReadOnlySpan<char> span)
+        public static ReadOnlySpan<char> NormalizeStart(ReadOnlySpan<char> span)
         {
             var index = 0;
             var length = span.Length;
 
             // skip .[/\\]*
             while (index < length && span[index] == '.' &&
-                   (index + 1 >= length || span[index] == '/' || span[index] == '\\'))
+                   (index + 1 >= length || span[index + 1] == '/' || span[index + 1] == '\\'))
             {
                 index++;
                 // skip [/\\]+
@@ -34,8 +34,31 @@ namespace DevSyncLib
                 }
             }
 
-            var slicedSpan = span[index..];
-            return new string(slicedSpan).Replace('\\', '/');
+            return span[index..];
+        }
+
+        public static string NormalizeSlash(ReadOnlySpan<char> span)
+        {
+            if (System.IO.Path.DirectorySeparatorChar == '\\' && span.Contains('\\'))
+            {
+                var len = span.Length;
+                Span<char> destSpan = stackalloc char[len];
+
+#if NET8_0_OR_GREATER
+                span.Replace(destSpan, '\\', '/');
+#else
+                for (int i = 0; i < len; i++)
+                {
+                    if (span[i] == '\\')
+                        destSpan[i] = '/';
+                    else
+                        destSpan[i] = span[i];
+                }
+#endif
+                return new string(destSpan);
+            }
+
+            return new string(span);
         }
 
         private bool CompareDates(DateTime dt1, DateTime dt2)

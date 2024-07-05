@@ -27,7 +27,8 @@ namespace DevSync
         private readonly Changes _changes;
         private readonly AgentStarter _agentStarter;
 
-        private const string GitIndexLockFilename = ".git/index.lock";
+        private ReadOnlySpan<char> GitIndexLockFilename => ".git/index.lock";
+        private ReadOnlySpan<char> GitIndexLockFilenameAlt => ".git\\index.lock";
 
         private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
         private readonly ManualResetEvent _gitIsReadyEvent = new ManualResetEvent(true);
@@ -266,10 +267,9 @@ namespace DevSync
 
             lock (_changes)
             {
-                if (_changes.TryGetValue(fsSenderChange.Path, out var oldFsChange))
+                if (_changes.Remove(fsSenderChange.Path, out var oldFsChange))
                 {
                     oldFsChange.Expired = true;
-                    _changes.Remove(oldFsChange.Path);
                     // Rename + Change -> Combine
                     if (fsSenderChange.IsChange && oldFsChange.IsRename)
                     {
@@ -332,8 +332,13 @@ namespace DevSync
             }
         }
 
-        private string GetPath(string fullPath)
+        private ReadOnlySpan<char> GetRelativePath(string fullPath)
         {
+            if (fullPath == null)
+            {
+                return ReadOnlySpan<char>.Empty;
+            }
+
             // fast path
             if (fullPath.StartsWith(_srcPath))
             {
@@ -350,79 +355,85 @@ namespace DevSync
                 if (index > 0)
                 {
                     // Slice instead of GetRelativePath
-                    return FsEntry.NormalizePath(span[index..]);
+                    return span[index..];
                 }
             }
 
             // slow path
-            return FsEntry.NormalizePath(Path.GetRelativePath(_srcPath, fullPath));
+            return Path.GetRelativePath(_srcPath, fullPath).AsSpan();
         }
+
+        private bool IsGitIndexLockFilename(ReadOnlySpan<char> path) =>
+            path.SequenceEqual(GitIndexLockFilename) || path.SequenceEqual(GitIndexLockFilenameAlt);
+
+        private string NormalizeRelativePath(ReadOnlySpan<char> relativePath) => 
+            FsEntry.NormalizeSlash(relativePath);
 
         private void OnWatcherChanged(object source, FileSystemEventArgs e)
         {
-            var path = GetPath(e.FullPath);
+            var relativePath = GetRelativePath(e.FullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (string.IsNullOrEmpty(path))
+            if (relativePath.IsEmpty)
             {
                 return;
             }
 
-            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && path == GitIndexLockFilename)
+            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && IsGitIndexLockFilename(relativePath))
             {
                 SetGitIsBusy(true);
             }
 
-            if (_excludeList.IsMatch(path))
+            if (_excludeList.IsMatch(relativePath))
             {
                 return;
             }
-            AddChange(FsSenderChange.CreateChange(path), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
+            AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
         }
 
         private void OnWatcherDeleted(object source, FileSystemEventArgs e)
         {
-            var path = GetPath(e.FullPath);
+            var relativePath = GetRelativePath(e.FullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (string.IsNullOrEmpty(path))
+            if (relativePath.IsEmpty)
             {
                 return;
             }
 
-            if (_gitIsBusy && path == GitIndexLockFilename)
+            if (_gitIsBusy && IsGitIndexLockFilename(relativePath))
             {
                 SetGitIsBusy(false);
             }
 
-            if (_excludeList.IsMatch(path))
+            if (_excludeList.IsMatch(relativePath))
             {
                 return;
             }
 
-            AddChange(FsSenderChange.CreateRemove(path));
+            AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(relativePath)));
         }
 
         private void OnWatcherRenamed(object source, RenamedEventArgs e)
         {
-            var path = GetPath(e.FullPath);
-            var oldPath = GetPath(e.OldFullPath);
+            var relativePath = GetRelativePath(e.FullPath);
+            var oldRelativePath = GetRelativePath(e.OldFullPath);
             // ignore event for srcPath (don't know why it occurs rarely)
-            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(oldPath))
+            if (relativePath.IsEmpty || oldRelativePath.IsEmpty)
             {
                 return;
             }
 
-            if (_gitIsBusy && oldPath == GitIndexLockFilename)
+            if (_gitIsBusy && IsGitIndexLockFilename(oldRelativePath))
             {
                 SetGitIsBusy(false);
             }
 
             // is new file excluded?
-            if (_excludeList.IsMatch(path))
+            if (_excludeList.IsMatch(relativePath))
             {
                 // old file is not excluded -> delete it
-                if (!_excludeList.IsMatch(oldPath))
+                if (!_excludeList.IsMatch(oldRelativePath))
                 {
-                    AddChange(FsSenderChange.CreateRemove(oldPath));
+                    AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(oldRelativePath)));
                 }
 
                 // both files are excluded -> do nothing
@@ -430,14 +441,14 @@ namespace DevSync
             else // new file is not excluded
             {
                 // old file is excluded -> send change with withSubdirectories
-                if (_excludeList.IsMatch(oldPath))
+                if (_excludeList.IsMatch(oldRelativePath))
                 {
-                    AddChange(FsSenderChange.CreateChange(path), withSubdirectories: true);
+                    AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: true);
                 }
                 else
                 {
                     // both files are not excluded -> send rename
-                    AddChange(FsSenderChange.CreateRename(path, oldPath));
+                    AddChange(FsSenderChange.CreateRename(NormalizeRelativePath(relativePath), NormalizeRelativePath(oldRelativePath)));
                 }
             }
         }

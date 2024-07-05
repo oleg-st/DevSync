@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace DevSyncLib
 {
@@ -76,7 +77,7 @@ namespace DevSyncLib
             var start = textStart;
             for (var p = textStart; p < textEnd; p++)
             {
-                if (*p == '/')
+                if (*p == '/' || *p == '\\')
                 {
                     if (start < p && MatchTextMask(start, p, mask))
                     {
@@ -125,7 +126,7 @@ namespace DevSyncLib
                                     }
 
                                     // ** followed by a / match zero or more directories
-                                    if (*globPointer != '/')
+                                    if (*globPointer != '/' && *globPointer != '\\')
                                     {
                                         return false;
                                     }
@@ -144,7 +145,7 @@ namespace DevSyncLib
                                 continue;
                             case '?':
                                 // match any character except /
-                                if (*textPointer == '/')
+                                if (*textPointer == '/' || *textPointer == '\\')
                                 {
                                     break;
                                 }
@@ -163,7 +164,7 @@ namespace DevSyncLib
                                 }
 
                                 // match the current non-NUL character
-                                if (*globPointer != *textPointer)
+                                if (*globPointer != *textPointer && (*globPointer != '/' && *globPointer != '\\' || *textPointer != '/' && *textPointer != '\\'))
                                     break;
 
                                 textPointer++;
@@ -172,7 +173,7 @@ namespace DevSyncLib
                         }
                     }
 
-                    if (glob1Backup != null && *text1Backup != '/')
+                    if (glob1Backup != null && *text1Backup != '/' && *text1Backup != '\\')
                     {
                         // *-loop: backtrack to the last * but do not jump over /
                         textPointer = ++text1Backup;
@@ -189,7 +190,7 @@ namespace DevSyncLib
                     }
 
                     // partial path match
-                    if (textPointer < textEnd && *textPointer == '/')
+                    if (textPointer < textEnd && (*textPointer == '/' || *textPointer == '\\'))
                     {
                         break;
                     }
@@ -223,7 +224,12 @@ namespace DevSyncLib
 
         public bool IsMatch(string path)
         {
-            if (string.IsNullOrEmpty(path))
+            return path != null && IsMatch(path.AsSpan());
+        }
+
+        public bool IsMatch(ReadOnlySpan<char> path)
+        {
+            if (path.IsEmpty)
             {
                 return false;
             }
