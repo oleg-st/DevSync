@@ -4,96 +4,84 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-namespace DevSyncLib
+namespace DevSyncLib;
+
+public class ScanDirectory(
+    ILogger logger,
+    FileMaskList excludeList,
+    bool withInfo = true,
+    CancellationToken? cancellationToken = null)
 {
-    public class ScanDirectory
+    public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "") => 
+        ScanPath(new DirectoryInfo(Path.Combine(basePath, relativePath)), relativePath);
+
+    public IEnumerable<FsEntry> ScanPath(DirectoryInfo directoryInfo, string relativePath = "")
     {
-        private readonly FileMaskList _excludeList;
-        private readonly ILogger _logger;
-        private readonly bool _withInfo;
-        private readonly CancellationToken? _cancellationToken;
-
-        public ScanDirectory(ILogger logger, FileMaskList excludeList, bool withInfo = true, CancellationToken? cancellationToken = null)
+        IEnumerable<FileSystemInfo>? fileSystemInfos = null;
+        try
         {
-            _logger = logger;
-            _excludeList = excludeList;
-            _withInfo = withInfo;
-            _cancellationToken = cancellationToken;
-        }
-
-        public IEnumerable<FsEntry> ScanPath(string basePath, string relativePath = "")
-        {
-            return ScanPath(new DirectoryInfo(Path.Combine(basePath, relativePath)), relativePath);
-        }
-
-        public IEnumerable<FsEntry> ScanPath(DirectoryInfo directoryInfo, string relativePath = "")
-        {
-            IEnumerable<FileSystemInfo> fileSystemInfos = null;
-            try
+            if (directoryInfo.Exists)
             {
-                if (directoryInfo.Exists)
+                fileSystemInfos = directoryInfo.EnumerateFileSystemInfos("*", new EnumerationOptions
                 {
-                    fileSystemInfos = directoryInfo.EnumerateFileSystemInfos("*", new EnumerationOptions
-                    {
-                        ReturnSpecialDirectories = false,
-                        // Skip symlinks
-                        AttributesToSkip = FileAttributes.ReparsePoint
-                    });
+                    ReturnSpecialDirectories = false,
+                    // Skip symlinks
+                    AttributesToSkip = FileAttributes.ReparsePoint
+                });
+            }
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // directory vanished during scan
+        }
+        catch (Exception ex)
+        {
+            logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
+        }
+
+        if (fileSystemInfos != null)
+        {
+            foreach (var fsInfo in fileSystemInfos)
+            {
+                cancellationToken?.ThrowIfCancellationRequested();
+                // U+FFFD is the "Unicode replacement character"
+                // Skip names with text encoding problems, we can't handle them
+                if (fsInfo.Name.Contains((char)0xFFFD))
+                {
+                    continue;
                 }
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // directory vanished during scan
-            }
-            catch (Exception ex)
-            {
-                _logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
-            }
 
-            if (fileSystemInfos != null)
-            {
-                foreach (var fsInfo in fileSystemInfos)
+                var path = string.IsNullOrEmpty(relativePath) ? fsInfo.Name : $"{relativePath}/{fsInfo.Name}";
+                var fsEntry = FsEntry.Empty;
+
+                // skip excludes
+                if (!excludeList.IsMatch(path))
                 {
-                    _cancellationToken?.ThrowIfCancellationRequested();
-                    // U+FFFD is the "Unicode replacement character"
-                    // Skip names with text encoding problems, we can't handle them
-                    if (fsInfo.Name.Contains((char)0xFFFD))
+                    // scan children
+                    if (fsInfo is DirectoryInfo childDirectoryInfo)
                     {
-                        continue;
+                        foreach (var entry in ScanPath(childDirectoryInfo, path))
+                        {
+                            yield return entry;
+                        }
                     }
 
-                    var path = string.IsNullOrEmpty(relativePath) ? fsInfo.Name : $"{relativePath}/{fsInfo.Name}";
-                    var fsEntry = FsEntry.Empty;
-
-                    // skip excludes
-                    if (!_excludeList.IsMatch(path))
+                    try
                     {
-                        // scan children
-                        if (fsInfo is DirectoryInfo childDirectoryInfo)
-                        {
-                            foreach (var entry in ScanPath(childDirectoryInfo, path))
-                            {
-                                yield return entry;
-                            }
-                        }
+                        fsEntry = FsEntry.FromFsInfo(path, fsInfo, withInfo);
+                    }
+                    catch (DirectoryNotFoundException)
+                    {
+                        // directory vanished during scan
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
+                    }
 
-                        try
-                        {
-                            fsEntry = FsEntry.FromFsInfo(path, fsInfo, _withInfo);
-                        }
-                        catch (DirectoryNotFoundException)
-                        {
-                            // directory vanished during scan
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Log($"Error scanning directory: {ex.Message}", LogLevel.Warning);
-                        }
-
-                        if (!fsEntry.IsEmpty)
-                        {
-                            yield return fsEntry;
-                        }
+                    if (!fsEntry.IsEmpty)
+                    {
+                        yield return fsEntry;
                     }
                 }
             }

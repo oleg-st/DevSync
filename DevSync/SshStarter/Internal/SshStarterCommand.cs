@@ -1,76 +1,76 @@
 ﻿using Renci.SshNet;
-using Renci.SshNet.Common;
 using System;
+using System.Diagnostics;
 using System.IO;
 
-namespace DevSync.SshStarter.Internal
+namespace DevSync.SshStarter.Internal;
+
+class SshStarterCommand : ISshStarterCommand
 {
-    class SshStarterCommand : ISshStarterCommand
+    private readonly SshCommand _sshCommand;
+
+    public int? ExitCode { get; set; }
+    public string? Error { get; set; }
+
+    public event EventHandler? OnExit;
+
+    private readonly IAsyncResult? _asyncResult;
+
+    private Stream? _inputStream;
+
+    public SshStarterCommand(SshCommand sshCommand)
     {
-        private readonly SshCommand _sshCommand;
-
-        public int? ExitCode { get; set; }
-        public string Error { get; set; }
-
-        public event EventHandler OnExit;
-
-        private readonly IAsyncResult _asyncResult;
-
-        private Stream _inputStream;
-
-        public SshStarterCommand(SshCommand sshCommand)
+        _sshCommand = sshCommand;
+        _asyncResult = _sshCommand.BeginExecute(_ =>
         {
-            _sshCommand = sshCommand;
-            _asyncResult = _sshCommand.BeginExecute(ar =>
-            {
-                ExitCode = sshCommand.ExitStatus;
-                Error = sshCommand.Error;
-                OnExit?.Invoke(this, EventArgs.Empty);
-            });
-        }
+            ExitCode = sshCommand.ExitStatus;
+            Error = sshCommand.Error;
+            OnExit?.Invoke(this, EventArgs.Empty);
+        });
+    }
 
-        public void Wait()
+    public void Wait()
+    {
+        lock (this)
+        {
+            Debug.Assert(_asyncResult != null);
+            _sshCommand.EndExecute(_asyncResult);
+            ExitCode = _sshCommand.ExitStatus;
+            Error = _sshCommand.Error;
+        }
+    }
+
+    protected void Cleanup()
+    {
+        lock (this)
+        {
+            _sshCommand.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        Cleanup();
+    }
+
+    public Stream OutputStream
+    {
+        get
         {
             lock (this)
             {
-                _sshCommand.EndExecute(_asyncResult);
-                ExitCode = _sshCommand.ExitStatus;
-                Error = _sshCommand.Error;
+                return _sshCommand.OutputStream;
             }
         }
+    }
 
-        protected void Cleanup()
+    public Stream InputStream
+    {
+        get
         {
             lock (this)
             {
-                _sshCommand?.Dispose();
-            }
-        }
-
-        public void Dispose()
-        {
-            Cleanup();
-        }
-
-        public Stream OutputStream
-        {
-            get
-            {
-                lock (this)
-                {
-                    return _sshCommand.OutputStream;
-                }
-            }
-        }
-
-        public Stream InputStream
-        {
-            get
-            {
-                lock (this)
-                {
-                    return _inputStream ??= _sshCommand.CreateInputStream();
-                }
+                return _inputStream ??= _sshCommand.CreateInputStream();
             }
         }
     }

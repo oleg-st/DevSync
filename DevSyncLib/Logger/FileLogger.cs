@@ -1,23 +1,15 @@
 ﻿using System;
 using System.IO;
 
-namespace DevSyncLib.Logger
+namespace DevSyncLib.Logger;
+
+public class FileLogger(string filename, LogLevel level = BaseLogger.DefaultLevel) : BaseLogger(level)
 {
-    public class FileLogger : BaseLogger
+    protected override void AddLog(string text, LogLevel level)
     {
-        private readonly string _filename;
-
-        public FileLogger(string filename, LogLevel level = DefaultLevel) : base(level)
+        lock (this)
         {
-            _filename = filename;
-        }
-
-        protected override void AddLog(string text, LogLevel level)
-        {
-            lock (this)
-            {
-                File.AppendAllText(_filename, $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}\n");
-            }
+            File.AppendAllText(filename, $"[{DateTime.Now:dd.MM.yyyy HH:mm:ss}] {level}: {text}\n");
         }
     }
 }

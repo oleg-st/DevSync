@@ -1,8 +1,5 @@
 ﻿using DevSyncLib;
 
-namespace DevSync.Data
-{
-    class Changes : OrderedDictionary<string, FsSenderChange>
-    {
-    }
-}
+namespace DevSync.Data;
+
+class Changes : OrderedDictionary<string, FsSenderChange>;

@@ -1,16 +1,10 @@
 ﻿using System;
 
-namespace DevSyncLib
-{
-    public class SyncException : Exception
-    {
-        public bool Recoverable { get; }
-        public bool NeedToWait { get; }
+namespace DevSyncLib;
 
-        public SyncException(string message, bool recoverable = false, bool needToWait = true) : base(message)
-        {
-            Recoverable = recoverable;
-            NeedToWait = needToWait;
-        }
-    }
+public class SyncException(string message, bool recoverable = false, bool needToWait = true)
+    : Exception(message)
+{
+    public bool Recoverable { get; } = recoverable;
+    public bool NeedToWait { get; } = needToWait;
 }

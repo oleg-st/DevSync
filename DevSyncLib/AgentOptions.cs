@@ -1,10 +1,9 @@
 ﻿using System.Collections.Generic;
 
-namespace DevSyncLib
+namespace DevSyncLib;
+
+public class AgentOptions(string destPath, List<string> excludeList)
 {
-    public class AgentOptions
-    {
-        public string DestPath;
-        public List<string> ExcludeList;
-    }
+    public string DestPath = destPath;
+    public List<string> ExcludeList = excludeList;
 }

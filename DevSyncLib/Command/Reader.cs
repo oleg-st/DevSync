@@ -1,267 +1,247 @@
 ﻿using DevSyncLib.Logger;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public class Reader(Stream stream, ILogger logger)
 {
-    public class Reader
+    private readonly ILogger _logger = logger;
+
+    protected BinaryReader BinaryReader = new(stream, Encoding.UTF8);
+
+    private const int BufferLength = 65536;
+    private readonly byte[] _buffer = new byte[BufferLength];
+
+    // detect shebang (#!) to make file executable
+    private static readonly bool PlatformHasChmod = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    private static ReadOnlySpan<byte> ShebangBytes => "#!"u8;
+    private static readonly int ShebangLength = ShebangBytes.Length;
+
+    public int ReadInt()
     {
-        private readonly ILogger _logger;
+        return BinaryReader.ReadInt32();
+    }
 
-        protected BinaryReader BinaryReader;
+    public short ReadInt16() => BinaryReader.ReadInt16();
 
-        private const int BufferLength = 65536;
-        private readonly byte[] _buffer = new byte[BufferLength];
+    public bool ReadBool() => BinaryReader.ReadBoolean();
 
-        // detect shebang (#!) to make file executable
-        private static readonly bool PlatformHasChmod = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        private static readonly byte[] ShebangBytes = { (byte)'#', (byte)'!' };
-        private static readonly int ShebangLength = ShebangBytes.Length;
+    public byte ReadByte() => BinaryReader.ReadByte();
 
-        public Reader(Stream stream, ILogger logger)
+    public string ReadString() => BinaryReader.ReadString();
+
+    public long ReadLong() => BinaryReader.ReadInt64();
+
+    public DateTime ReadDateTime() => DateTime.FromFileTime(BinaryReader.ReadInt64());
+
+    public FsEntry ReadFsEntry()
+    {
+        var path = ReadString();
+        if (string.IsNullOrEmpty(path))
         {
-            _logger = logger;
-            BinaryReader = new BinaryReader(stream, Encoding.UTF8);
+            return FsEntry.Empty;
         }
 
-        public int ReadInt()
+        return new FsEntry
         {
-            return BinaryReader.ReadInt32();
+            Path = path,
+            Length = ReadLong(),
+            LastWriteTime = ReadDateTime(),
+        };
+    }
+
+    public FsChange ReadFsChange()
+    {
+        var changeType = (FsChangeType)ReadByte();
+        if (changeType == FsChangeType.EmptyMarker)
+        {
+            return FsChange.Empty;
         }
 
-        public short ReadInt16()
+        var fsChange = new FsChange(changeType, ReadString());
+        if (fsChange.IsChange)
         {
-            return BinaryReader.ReadInt16();
+            fsChange.Length = ReadLong();
+            fsChange.IsDirectory = fsChange.Length == -1;
+            fsChange.LastWriteTime = ReadDateTime();
         }
-        public bool ReadBool()
+        if (fsChange.IsRename)
         {
-            return BinaryReader.ReadBoolean();
+            fsChange.OldPath = ReadString();
         }
+        return fsChange;
+    }
 
-        public byte ReadByte()
+    public FsChangeResult ReadFsChangeResult()
+    {
+        var changeType = (FsChangeType)ReadByte();
+        if (changeType == FsChangeType.EmptyMarker)
         {
-            return BinaryReader.ReadByte();
-        }
-
-        public string ReadString()
-        {
-            return BinaryReader.ReadString();
-        }
-
-        public long ReadLong()
-        {
-            return BinaryReader.ReadInt64();
+            return FsChangeResult.Empty;
         }
 
-        public DateTime ReadDateTime()
+        var fsChangeResult = new FsChangeResult
         {
-            return DateTime.FromFileTime(BinaryReader.ReadInt64());
+            ChangeType = changeType,
+            Path = ReadString(),
+            ResultCode = (FsChangeResultCode)ReadByte()
+        };
+
+        if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
+        {
+            fsChangeResult.ErrorMessage = ReadString();
         }
 
-        public FsEntry ReadFsEntry()
+        return fsChangeResult;
+    }
+
+    public bool ReadFsChangeBody(string path, FsChange fsChange)
+    {
+        var shebangPosition = 0;
+        var makeExecutable = false;
+
+        string? tempPath = null;
+        FileStream? fs = null;
+        bool bodyReadSuccess = false;
+        try
         {
-            var path = ReadString();
-            if (string.IsNullOrEmpty(path))
-            {
-                return FsEntry.Empty;
-            }
-
-            return new FsEntry
-            {
-                Path = path,
-                Length = ReadLong(),
-                LastWriteTime = ReadDateTime(),
-            };
-        }
-
-        public FsChange ReadFsChange()
-        {
-            var changeType = (FsChangeType)ReadByte();
-            if (changeType == FsChangeType.EmptyMarker)
-            {
-                return FsChange.Empty;
-            }
-
-            var fsChange = new FsChange(changeType, ReadString());
-            if (fsChange.IsChange)
-            {
-                fsChange.Length = ReadLong();
-                fsChange.IsDirectory = fsChange.Length == -1;
-                fsChange.LastWriteTime = ReadDateTime();
-            }
-            if (fsChange.IsRename)
-            {
-                fsChange.OldPath = ReadString();
-            }
-            return fsChange;
-        }
-
-        public FsChangeResult ReadFsChangeResult()
-        {
-            var changeType = (FsChangeType)ReadByte();
-            if (changeType == FsChangeType.EmptyMarker)
-            {
-                return FsChangeResult.Empty;
-            }
-
-            var fsChangeResult = new FsChangeResult
-            {
-                ChangeType = changeType,
-                Path = ReadString(),
-                ResultCode = (FsChangeResultCode)ReadByte()
-            };
-
-            if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
-            {
-                fsChangeResult.ErrorMessage = ReadString();
-            }
-
-            return fsChangeResult;
-        }
-
-        public bool ReadFsChangeBody(string path, FsChange fsChange)
-        {
-            var shebangPosition = 0;
-            var makeExecutable = false;
-
-            string tempPath = null;
-            FileStream fs = null;
-            bool bodyReadSuccess = false;
+            long written = 0;
             try
             {
-                long written = 0;
-                try
+                int chunkSize;
+                do
                 {
-                    int chunkSize;
-                    do
+                    chunkSize = ReadInt();
+                    if (chunkSize < 0)
                     {
-                        chunkSize = ReadInt();
-                        if (chunkSize < 0)
+                        // error occurred in sender
+                        return false;
+                    }
+
+                    var remain = chunkSize;
+                    while (remain > 0)
+                    {
+                        var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
+                        if (read <= 0)
                         {
-                            // error occurred in sender
-                            return false;
+                            throw new EndOfStreamException(
+                                $"Premature end of stream {remain}, {chunkSize}, {read})");
                         }
 
-                        var remain = chunkSize;
-                        while (remain > 0)
+                        if (written == 0)
                         {
-                            var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
-                            if (read <= 0)
-                            {
-                                throw new EndOfStreamException(
-                                    $"Premature end of stream {remain}, {chunkSize}, {read})");
-                            }
+                            var directoryName = Path.GetDirectoryName(path);
+                            Debug.Assert(directoryName != null);
+                            Directory.CreateDirectory(directoryName);
+                            tempPath = Path.Combine(directoryName,
+                                "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
+                            fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                        }
 
-                            if (written == 0)
+                        if (PlatformHasChmod && shebangPosition < ShebangLength)
+                        {
+                            for (var i = 0; i < read;)
                             {
-                                var directoryName = Path.GetDirectoryName(path);
-                                Directory.CreateDirectory(directoryName);
-                                tempPath = Path.Combine(directoryName,
-                                    "." + Path.GetFileName(path) + "." + Path.GetRandomFileName());
-                                fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-                            }
-
-                            if (PlatformHasChmod && shebangPosition < ShebangLength)
-                            {
-                                for (var i = 0; i < read;)
+                                if (_buffer[i++] != ShebangBytes[shebangPosition++])
                                 {
-                                    if (_buffer[i++] != ShebangBytes[shebangPosition++])
-                                    {
-                                        // no shebang
-                                        shebangPosition = int.MaxValue;
-                                        break;
-                                    }
+                                    // no shebang
+                                    shebangPosition = int.MaxValue;
+                                    break;
+                                }
 
-                                    if (shebangPosition == ShebangLength)
-                                    {
-                                        makeExecutable = true;
-                                        break;
-                                    }
+                                if (shebangPosition == ShebangLength)
+                                {
+                                    makeExecutable = true;
+                                    break;
                                 }
                             }
-
-                            fs?.Write(_buffer, 0, read);
-                            written += read;
-                            remain -= read;
                         }
-                    } while (chunkSize > 0);
-                }
-                catch (Exception)
-                {
-                    SkipFsChangeBody();
-                    throw;
-                }
 
-                bodyReadSuccess = written == fsChange.Length;
-                if (bodyReadSuccess && makeExecutable)
-                {
-                    // 0755, rwxr-xr-x
-                    fs.FChangeMode(0b111_101_101);
-                }
-
-                // create empty file
-                if (bodyReadSuccess && fsChange.Length == 0)
-                {
-                    var directoryName = Path.GetDirectoryName(path);
-                    Directory.CreateDirectory(directoryName);
-                    using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
-                    {
+                        fs?.Write(_buffer, 0, read);
+                        written += read;
+                        remain -= read;
                     }
-                    File.SetLastWriteTime(path, fsChange.LastWriteTime);
-                }
-
-                return bodyReadSuccess;
+                } while (chunkSize > 0);
             }
-            finally
+            catch (Exception)
             {
-                if (fs != null)
-                {
-                    fs.Dispose();
+                SkipFsChangeBody();
+                throw;
+            }
 
-                    if (bodyReadSuccess)
+            bodyReadSuccess = written == fsChange.Length;
+            if (bodyReadSuccess && makeExecutable)
+            {
+                // 0755, rwxr-xr-x
+                fs!.FChangeMode(0b111_101_101);
+            }
+
+            // create empty file
+            if (bodyReadSuccess && fsChange.Length == 0)
+            {
+                var directoryName = Path.GetDirectoryName(path);
+                Debug.Assert(directoryName != null);
+                Directory.CreateDirectory(directoryName);
+                using (new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+                {
+                }
+                File.SetLastWriteTime(path, fsChange.LastWriteTime);
+            }
+
+            return bodyReadSuccess;
+        }
+        finally
+        {
+            if (fs != null)
+            {
+                fs.Dispose();
+
+                Debug.Assert(tempPath != null);
+                if (bodyReadSuccess)
+                {
+                    try
                     {
-                        try
-                        {
-                            File.SetLastWriteTime(tempPath, fsChange.LastWriteTime);
-                            File.Move(tempPath, path, true);
-                        }
-                        catch (Exception)
-                        {
-                            FsHelper.TryDeleteFile(tempPath);
-                            throw;
-                        }
+                        File.SetLastWriteTime(tempPath, fsChange.LastWriteTime);
+                        File.Move(tempPath, path, true);
                     }
-                    else
+                    catch (Exception)
                     {
                         FsHelper.TryDeleteFile(tempPath);
+                        throw;
                     }
+                }
+                else
+                {
+                    FsHelper.TryDeleteFile(tempPath);
                 }
             }
         }
+    }
 
-        public void SkipFsChangeBody()
+    public void SkipFsChangeBody()
+    {
+        do
         {
-            do
+            var chunkSize = ReadInt();
+            if (chunkSize <= 0)
             {
-                var chunkSize = ReadInt();
-                if (chunkSize <= 0)
-                {
-                    return;
-                }
+                return;
+            }
 
-                var remain = chunkSize;
-                while (remain > 0)
+            var remain = chunkSize;
+            while (remain > 0)
+            {
+                var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
+                if (read == 0)
                 {
-                    var read = BinaryReader.Read(_buffer, 0, Math.Min(BufferLength, remain));
-                    if (read == 0)
-                    {
-                        throw new EndOfStreamException();
-                    }
-                    remain -= read;
+                    throw new EndOfStreamException();
                 }
-            } while (true);
-        }
+                remain -= read;
+            }
+        } while (true);
     }
 }

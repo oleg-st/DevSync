@@ -1,47 +1,44 @@
 ﻿using System.IO;
 
-namespace DevSyncLib.Command.Compression
+namespace DevSyncLib.Command.Compression;
+
+public abstract class StreamCompression<T> : ICompression where T : Stream
 {
-    public abstract class StreamCompression<T> : ICompression where T : Stream
+    protected abstract T CreateCompressStream(Stream stream);
+
+    protected abstract T CreateDecompressStream(Stream stream);
+
+    public bool TryCompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written)
     {
-        protected abstract T CreateCompressStream(Stream stream);
+        using var outputStream = new LimitedBufferStream(destination, destinationOffset, destinationLength);
+        using var gzip = CreateCompressStream(outputStream);
+        gzip.Write(source, sourceOffset, sourceLength);
+        gzip.Flush();
 
-        protected abstract T CreateDecompressStream(Stream stream);
-
-        public bool TryCompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written)
+        if (outputStream.IsLimitReached || outputStream.Position > source.Length)
         {
-            using var outputStream = new LimitedBufferStream(destination, destinationOffset, destinationLength);
-            using var gzip = CreateCompressStream(outputStream);
-            gzip.Write(source, sourceOffset, sourceLength);
-            gzip.Flush();
-
-            if (outputStream.IsLimitReached || outputStream.Position > source.Length)
-            {
-                written = 0;
-                return false;
-            }
-
-            written = (int)outputStream.Position;
-            return true;
+            written = 0;
+            return false;
         }
 
-        public bool TryDecompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written)
+        written = (int)outputStream.Position;
+        return true;
+    }
+
+    public bool TryDecompress(byte[] source, int sourceOffset, int sourceLength, byte[] destination, int destinationOffset, int destinationLength, out int written)
+    {
+        using var inputStream = new LimitedBufferStream(source, sourceOffset, sourceLength);
+        using var outputMs = new LimitedBufferStream(destination, destinationOffset, destinationLength);
+        using var decompressStream = CreateDecompressStream(inputStream);
+        decompressStream.CopyTo(outputMs);
+        if (outputMs.IsLimitReached)
         {
-            using (var inputStream = new LimitedBufferStream(source, sourceOffset, sourceLength))
-            {
-                using var outputMs = new LimitedBufferStream(destination, destinationOffset, destinationLength);
-                using var gzip = CreateDecompressStream(inputStream);
-                gzip.CopyTo(outputMs);
-                if (outputMs.IsLimitReached)
-                {
-                    written = 0;
-                    return false;
-                }
-
-                written = (int)outputMs.Position;
-            }
-
-            return true;
+            written = 0;
+            return false;
         }
+
+        written = (int)outputMs.Position;
+
+        return true;
     }
 }

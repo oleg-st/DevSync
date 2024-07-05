@@ -1,305 +1,312 @@
 ﻿using DevSyncLib.Logger;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public class ApplyRequest(ILogger logger) : Packet(logger)
 {
-    public class ApplyRequest : Packet
+    public override short Signature => 5;
+
+    // max items body size in chunk (soft limit)
+    public const int ChangesMaxSize = 100 * 1024 * 1024;
+    // max items in chunk
+    public const int ChangesMaxCount = 2500;
+
+    public List<FsSenderChange>? SentChanges;
+    public long SentChangesSize;
+
+    protected Reader? Reader;
+
+    public string? BasePath;
+
+    public override void Read(Reader reader)
     {
-        public override short Signature => 5;
+        Reader = reader;
+    }
 
-        private List<FsSenderChange> _changes;
-
-        // max items body size in chunk (soft limit)
-        public const int ChangesMaxSize = 100 * 1024 * 1024;
-        // max items in chunk
-        public const int ChangesMaxCount = 2500;
-
-        public List<FsSenderChange> SentChanges;
-        public long SentChangesSize;
-
-        protected Reader Reader;
-
-        public string BasePath;
-
-        public override void Read(Reader reader)
+    [MemberNotNull(nameof(Changes))]
+    public void SetChanges(IEnumerable<FsSenderChange> changes)
+    {
+        if (Changes == null)
         {
-            Reader = reader;
+            Changes = new List<FsSenderChange>(ChangesMaxCount);
         }
-
-        public void SetChanges(IEnumerable<FsSenderChange> changes)
+        else
         {
-            if (_changes == null)
-            {
-                _changes = new List<FsSenderChange>(ChangesMaxCount);
-            }
-            else
-            {
-                _changes.Clear();
-            }
-            _changes.AddRange(changes.Take(ChangesMaxCount));
+            Changes.Clear();
         }
+        Changes.AddRange(changes.Take(ChangesMaxCount));
+    }
 
-        public bool HasChanges => _changes.Count > 0;
+    public bool HasChanges => Changes?.Count > 0;
 
-        public List<FsSenderChange> Changes => _changes;
+    public List<FsSenderChange>? Changes { get; private set; }
 
-        private FsChangeResult ApplyFsChange(FsChange fsChange, FileMaskList excludeList)
+    private FsChangeResult ApplyFsChange(FsChange fsChange, FileMaskList excludeList)
+    {
+        Debug.Assert(BasePath != null);
+        Debug.Assert(Reader != null);
+        Debug.Assert(fsChange.Path != null);
+        var path = Path.Combine(BasePath, fsChange.Path);
+        FsChangeResultCode resultCode = FsChangeResultCode.None;
+        string? error = null;
+        // Change file | Remove |  Rename + Change directory
+        if (fsChange is { IsChange: true, IsDirectory: false })
         {
-            var path = Path.Combine(BasePath, fsChange.Path);
-            FsChangeResultCode resultCode = FsChangeResultCode.None;
-            string error = null;
-            // Change file | Remove |  Rename + Change directory
-            if (fsChange.IsChange && !fsChange.IsDirectory)
+            try
             {
+                if (fsChange.HasBody && Reader.ReadFsChangeBody(path, fsChange))
+                {
+                    resultCode = FsChangeResultCode.Ok;
+                }
+                else
+                {
+                    // error occurred in sender
+                    error = "Sender error";
+                    resultCode = FsChangeResultCode.SenderError;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // end of data
+                throw;
+            }
+            catch (Exception ex)
+            {
+                resultCode = FsChangeResultCode.Error;
+                error = ex.Message;
+            }
+        }
+        else if (fsChange.IsRemove)
+        {
+            // directory
+            if (Directory.Exists(path))
+            {
+                var scanDirectory = new ScanDirectory(Logger, excludeList, false);
+                Exception? exception = null;
+                foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.Path))
+                {
+                    var fsEntryPath = Path.Combine(BasePath, fsEntry.Path);
+                    try
+                    {
+                        if (fsEntry.IsDirectory)
+                        {
+                            Directory.Delete(fsEntryPath, false);
+                        }
+                        else
+                        {
+                            File.Delete(fsEntryPath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        exception ??= ex;
+                        Logger.Log($"Error deleting {fsEntryPath}: {ex.Message}", LogLevel.Warning);
+                    }
+                }
+
                 try
                 {
-                    if (fsChange.HasBody && Reader.ReadFsChangeBody(path, fsChange))
+                    Directory.Delete(path, false);
+                }
+                catch (Exception ex)
+                {
+                    exception ??= ex;
+                    Logger.Log($"Error deleting {path}: {ex.Message}", LogLevel.Warning);
+                }
+
+                if (exception == null)
+                {
+                    resultCode = FsChangeResultCode.Ok;
+                }
+                else
+                {
+                    // scan directory see any file -> error (handle excludes)
+                    if (scanDirectory.ScanPath(BasePath, fsChange.Path).Any(x => !x.IsDirectory))
                     {
-                        resultCode = FsChangeResultCode.Ok;
+                        resultCode = FsChangeResultCode.Error;
+                        error = exception.Message;
                     }
                     else
                     {
-                        // error occurred in sender
-                        error = "Sender error";
-                        resultCode = FsChangeResultCode.SenderError;
+                        resultCode = FsChangeResultCode.Ok;
                     }
                 }
-                catch (EndOfStreamException)
+            }
+            else if (File.Exists(path))
+            {
+                try
                 {
-                    // end of data
-                    throw;
+                    File.Delete(path);
+                    resultCode = FsChangeResultCode.Ok;
+
                 }
                 catch (Exception ex)
                 {
                     resultCode = FsChangeResultCode.Error;
                     error = ex.Message;
+
                 }
             }
-            else if (fsChange.IsRemove)
+            else
             {
-                // directory
-                if (Directory.Exists(path))
+                resultCode = FsChangeResultCode.Ok;
+            }
+        }
+        else
+        {
+            if (fsChange is { IsChange: true, IsDirectory: true })
+            {
+                try
                 {
-                    var scanDirectory = new ScanDirectory(Logger, excludeList, false);
-                    Exception exception = null;
-                    foreach (var fsEntry in scanDirectory.ScanPath(BasePath, fsChange.Path))
-                    {
-                        var fsEntryPath = Path.Combine(BasePath, fsEntry.Path);
-                        try
-                        {
-                            if (fsEntry.IsDirectory)
-                            {
-                                Directory.Delete(fsEntryPath, false);
-                            }
-                            else
-                            {
-                                File.Delete(fsEntryPath);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            exception ??= ex;
-                            Logger.Log($"Error deleting {fsEntryPath}: {ex.Message}", LogLevel.Warning);
-                        }
-                    }
+                    var directoryPath = fsChange.IsRename ? Path.Combine(BasePath, fsChange.OldPath) : path;
+                    Directory.CreateDirectory(directoryPath);
+                    Directory.SetLastWriteTime(directoryPath, fsChange.LastWriteTime);
+                    resultCode = FsChangeResultCode.Ok;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    resultCode = FsChangeResultCode.Error;
+                }
+            }
 
-                    try
+            if (resultCode != FsChangeResultCode.Error && fsChange.IsRename)
+            {
+                try
+                {
+                    var oldPath = Path.Combine(BasePath, fsChange.OldPath);
+                    if (Directory.Exists(oldPath))
                     {
-                        Directory.Delete(path, false);
-                    }
-                    catch (Exception ex)
-                    {
-                        exception ??= ex;
-                        Logger.Log($"Error deleting {path}: {ex.Message}", LogLevel.Warning);
-                    }
-
-                    if (exception == null)
-                    {
-                        resultCode = FsChangeResultCode.Ok;
+                        Directory.Move(oldPath, path);
                     }
                     else
                     {
-                        // scan directory see any file -> error (handle excludes)
-                        if (scanDirectory.ScanPath(BasePath, fsChange.Path).Any(x => !x.IsDirectory))
-                        {
-                            resultCode = FsChangeResultCode.Error;
-                            error = exception.Message;
-                        }
-                        else
-                        {
-                            resultCode = FsChangeResultCode.Ok;
-                        }
+                        File.Move(oldPath, path, true);
                     }
-                }
-                else if (File.Exists(path))
-                {
-                    try
-                    {
-                        File.Delete(path);
-                        resultCode = FsChangeResultCode.Ok;
 
-                    }
-                    catch (Exception ex)
-                    {
-                        resultCode = FsChangeResultCode.Error;
-                        error = ex.Message;
-
-                    }
-                }
-                else
-                {
                     resultCode = FsChangeResultCode.Ok;
                 }
-            }
-            else
-            {
-                if (fsChange.IsChange && fsChange.IsDirectory)
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        var directoryPath = fsChange.IsRename ? Path.Combine(BasePath, fsChange.OldPath) : path;
-                        Directory.CreateDirectory(directoryPath);
-                        Directory.SetLastWriteTime(directoryPath, fsChange.LastWriteTime);
-                        resultCode = FsChangeResultCode.Ok;
-                    }
-                    catch (Exception ex)
-                    {
-                        error = ex.Message;
-                        resultCode = FsChangeResultCode.Error;
-                    }
-                }
-
-                if (resultCode != FsChangeResultCode.Error && fsChange.IsRename)
-                {
-                    try
-                    {
-                        var oldPath = Path.Combine(BasePath, fsChange.OldPath);
-                        if (Directory.Exists(oldPath))
-                        {
-                            Directory.Move(oldPath, path);
-                        }
-                        else
-                        {
-                            File.Move(oldPath, path, true);
-                        }
-
-                        resultCode = FsChangeResultCode.Ok;
-                    }
-                    catch (Exception ex)
-                    {
-                        error = ex.Message;
-                        resultCode = FsChangeResultCode.Error;
-                    }
-                }
-            }
-
-            if (resultCode == FsChangeResultCode.None)
-            {
-                resultCode = FsChangeResultCode.Error;
-                error = "Unknown change type";
-            }
-
-            return new FsChangeResult
-            {
-                ChangeType = fsChange.ChangeType,
-                Path = fsChange.Path,
-                ResultCode = resultCode,
-                ErrorMessage = error
-            };
-        }
-
-        // read and apply changes
-        public IEnumerable<FsChangeResult> ReadAndApplyChanges(FileMaskList excludeList)
-        {
-            while (true)
-            {
-                var fsChange = Reader.ReadFsChange();
-                if (fsChange.IsEmpty)
-                {
-                    break;
-                }
-
-                var fsChangeResult = ApplyFsChange(fsChange, excludeList);
-                if (fsChangeResult.ResultCode != FsChangeResultCode.Ok && fsChange.IsChange)
-                {
-                    var path = Path.Combine(BasePath, fsChange.Path);
-                    if (fsChange.IsDirectory && File.Exists(path)
-                        || !fsChange.IsDirectory && Directory.Exists(path))
-                    {
-                        // delete and retry
-                        var fsRemoveChangeResult = ApplyFsChange(
-                            new FsChange(FsChangeType.Remove, fsChange.Path),
-                                excludeList);
-                        if (fsRemoveChangeResult.ResultCode == FsChangeResultCode.Ok)
-                        {
-                            fsChangeResult = ApplyFsChange(fsChange, excludeList);
-                        }
-                    }
-                }
-
-                // TODO: skip ok codes (sender do not use them at the moment)
-                if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
-                {
-                    yield return fsChangeResult;
+                    error = ex.Message;
+                    resultCode = FsChangeResultCode.Error;
                 }
             }
         }
 
-        public void ClearChanges()
+        if (resultCode == FsChangeResultCode.None)
         {
-            _changes.Clear();
+            resultCode = FsChangeResultCode.Error;
+            error = "Unknown change type";
+        }
+
+        return new FsChangeResult
+        {
+            ChangeType = fsChange.ChangeType,
+            Path = fsChange.Path,
+            ResultCode = resultCode,
+            ErrorMessage = error
+        };
+    }
+
+    // read and apply changes
+    public IEnumerable<FsChangeResult> ReadAndApplyChanges(FileMaskList excludeList)
+    {
+        Debug.Assert(BasePath != null);
+        Debug.Assert(Reader != null);
+
+        while (true)
+        {
+            var fsChange = Reader.ReadFsChange();
+            if (fsChange.IsEmpty)
+            {
+                break;
+            }
+
+            var fsChangeResult = ApplyFsChange(fsChange, excludeList);
+            if (fsChangeResult.ResultCode != FsChangeResultCode.Ok && fsChange.IsChange)
+            {
+                var path = Path.Combine(BasePath, fsChange.Path);
+                if (fsChange.IsDirectory && File.Exists(path)
+                    || !fsChange.IsDirectory && Directory.Exists(path))
+                {
+                    // delete and retry
+                    var fsRemoveChangeResult = ApplyFsChange(
+                        new FsChange(FsChangeType.Remove, fsChange.Path),
+                        excludeList);
+                    if (fsRemoveChangeResult.ResultCode == FsChangeResultCode.Ok)
+                    {
+                        fsChangeResult = ApplyFsChange(fsChange, excludeList);
+                    }
+                }
+            }
+
+            // TODO: skip ok codes (sender do not use them at the moment)
+            if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
+            {
+                yield return fsChangeResult;
+            }
+        }
+    }
+
+    public void ClearChanges()
+    {
+        Changes?.Clear();
+        SentChanges?.Clear();
+        SentChangesSize = 0;
+    }
+
+    public override void Write(Writer writer)
+    {
+        Debug.Assert(BasePath != null);
+        Debug.Assert(Changes != null);
+
+        if (SentChanges == null)
+        {
+            SentChanges = new List<FsSenderChange>(ChangesMaxCount);
+        }
+        else
+        {
             SentChanges.Clear();
-            SentChangesSize = 0;
         }
-
-        public override void Write(Writer writer)
+        SentChangesSize = 0;
+        foreach (var fsChange in Changes)
         {
-            if (SentChanges == null)
-            {
-                SentChanges = new List<FsSenderChange>(ChangesMaxCount);
-            }
-            else
-            {
-                SentChanges.Clear();
-            }
-            SentChangesSize = 0;
-            foreach (var fsChange in _changes)
-            {
-                if (SentChangesSize >= ChangesMaxSize)
-                {
-                    break;
-                }
+            Debug.Assert(fsChange.Path != null);
 
-                if (!fsChange.Expired)
+            if (SentChangesSize >= ChangesMaxSize)
+            {
+                break;
+            }
+
+            if (!fsChange.Expired)
+            {
+                var path = Path.Combine(BasePath, fsChange.Path);
+                if (fsChange.NeedToResolve)
                 {
-                    var path = Path.Combine(BasePath, fsChange.Path);
-                    if (fsChange.NeedToResolve)
+                    fsChange.Resolve(path);
+                }
+                if (!fsChange.Vanished)
+                {
+                    if (fsChange.HasBody)
                     {
-                        fsChange.Resolve(path);
+                        writer.WriteFsChangeBody(path, fsChange);
                     }
-                    if (!fsChange.Vanished)
+                    else
                     {
-                        if (fsChange.HasBody)
-                        {
-                            writer.WriteFsChangeBody(path, fsChange);
-                        }
-                        else
-                        {
-                            writer.WriteFsChange(fsChange);
-                        }
+                        writer.WriteFsChange(fsChange);
                     }
                 }
-                SentChanges.Add(fsChange);
-                SentChangesSize += fsChange.BodySize;
             }
-            writer.WriteFsChange(FsChange.Empty);
+            SentChanges.Add(fsChange);
+            SentChangesSize += fsChange.BodySize;
         }
-
-        public ApplyRequest(ILogger logger) : base(logger)
-        {
-        }
+        writer.WriteFsChange(FsChange.Empty);
     }
 }

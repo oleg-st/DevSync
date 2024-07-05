@@ -1,44 +1,34 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 
-namespace DevSyncLib.Logger
+namespace DevSyncLib.Logger;
+
+public abstract class BaseLogger(LogLevel level = BaseLogger.DefaultLevel) : ILogger
 {
-    public abstract class BaseLogger : ILogger
+    protected readonly ManualResetEvent NoPauseEvent = new(true);
+
+    public LogLevel Level { get; set; } = level;
+
+    public const LogLevel DefaultLevel = LogLevel.Info;
+
+    public virtual void Pause() => NoPauseEvent.Reset();
+
+    public virtual void Resume() => NoPauseEvent.Set();
+
+    public virtual void Dispose()
     {
-        protected readonly ManualResetEvent NoPauseEvent = new(true);
+        NoPauseEvent.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
-        public LogLevel Level { get; set; }
+    protected abstract void AddLog(string text, LogLevel level);
 
-        public const LogLevel DefaultLevel = LogLevel.Info;
-
-        protected BaseLogger(LogLevel level = DefaultLevel)
+    public void Log(string text, LogLevel level = LogLevel.Info)
+    {
+        if (level >= Level)
         {
-            Level = level;
-        }
-
-        public virtual void Pause()
-        {
-            NoPauseEvent.Reset();
-        }
-
-        public virtual void Resume()
-        {
-            NoPauseEvent.Set();
-        }
-
-        public virtual void Dispose()
-        {
-            NoPauseEvent.Dispose();
-        }
-
-        protected abstract void AddLog(string text, LogLevel level);
-
-        public void Log(string text, LogLevel level = LogLevel.Info)
-        {
-            if (level >= Level)
-            {
-                NoPauseEvent.WaitOne();
-                AddLog(text, level);
-            }
+            NoPauseEvent.WaitOne();
+            AddLog(text, level);
         }
     }
 }

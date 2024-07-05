@@ -1,23 +1,22 @@
 ﻿using System;
 
-namespace DevSync.SshStarter
+namespace DevSync.SshStarter;
+
+public interface ISshStarter : IDisposable
 {
-    public interface ISshStarter : IDisposable
-    {
-        string Host { get; set; }
+    string Host { get; set; }
 
-        int Port { get; set; }
+    int Port { get; set; }
 
-        string Username { get; set; }
+    string Username { get; set; }
 
-        string KeyFilePath { get; set; }
+    string KeyFilePath { get; set; }
 
-        AuthenticationMethodMode AuthenticationMode { get; set; }
+    AuthenticationMethodMode AuthenticationMode { get; set; }
 
-        event EventHandler<SshStarterErrorEventArgs> OnConnectError;
+    event EventHandler<SshStarterErrorEventArgs> OnConnectError;
 
-        void Connect();
+    void Connect();
 
-        ISshStarterCommand RunCommand(string command);
-    }
+    ISshStarterCommand RunCommand(string command);
 }

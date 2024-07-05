@@ -1,11 +1,10 @@
-﻿namespace DevSyncLib.Logger
+﻿namespace DevSyncLib.Logger;
+
+public enum LogLevel
 {
-    public enum LogLevel
-    {
-        Off,
-        Debug,
-        Info,
-        Warning,
-        Error
-    }
+    Off,
+    Debug,
+    Info,
+    Warning,
+    Error
 }

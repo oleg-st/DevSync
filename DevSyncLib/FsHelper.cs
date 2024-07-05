@@ -1,32 +1,29 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
-namespace DevSyncLib
+namespace DevSyncLib;
+
+public static class FsHelper
 {
-    public static class FsHelper
+    public static bool TryDeleteFile(string filename) => TryDeleteFile(filename, out _);
+
+    public static bool TryDeleteFile(string filename, [MaybeNullWhen(true)] out Exception exception)
     {
-        public static bool TryDeleteFile(string filename)
+        if (File.Exists(filename))
         {
-            return TryDeleteFile(filename, out _);
-        }
-
-        public static bool TryDeleteFile(string filename, out Exception exception)
-        {
-            if (File.Exists(filename))
+            try
             {
-                try
-                {
-                    File.Delete(filename);
-                }
-                catch (Exception ex)
-                {
-                    exception = ex;
-                    return false;
-                }
+                File.Delete(filename);
             }
-
-            exception = null;
-            return true;
+            catch (Exception ex)
+            {
+                exception = ex;
+                return false;
+            }
         }
+
+        exception = null;
+        return true;
     }
 }

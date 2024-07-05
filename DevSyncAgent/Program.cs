@@ -1,44 +1,45 @@
 ﻿using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 
-namespace DevSyncAgent
+namespace DevSyncAgent;
+
+class Program
 {
-    class Program
+    static void Main()
     {
-        static void Main(string[] args)
+        var assemblyPath = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
+        Debug.Assert(assemblyPath != null);
+        using var logger = new FileLogger(Path.Combine(assemblyPath, "devsync.log"));
+        try
         {
-            var assemblyPath = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
-            using var logger = new FileLogger(Path.Combine(assemblyPath, "devsync.log"));
-            try
+            if (!Console.IsInputRedirected || !Console.IsOutputRedirected)
             {
-                if (!Console.IsInputRedirected || !Console.IsOutputRedirected)
-                {
-                    Console.WriteLine("DevSyncAgent: No sender");
-                    return;
-                }
+                Console.WriteLine("DevSyncAgent: No sender");
+                return;
+            }
 
-                PosixExtensions.SetupUserMask();
+            PosixExtensions.SetupUserMask();
 
-                var packetStream = new PacketStream(Console.OpenStandardInput(), Console.OpenStandardOutput(), logger);
-                var commandRunner = new CommandRunner(logger);
-                while (true)
-                {
-                    var request = packetStream.ReadPacket();
-                    var response = commandRunner.Run(request);
-                    packetStream.WritePacket(response);
-                }
-            }
-            catch (EndOfStreamException)
+            var packetStream = new PacketStream(Console.OpenStandardInput(), Console.OpenStandardOutput(), logger);
+            var commandRunner = new CommandRunner(logger);
+            while (true)
             {
-                // end of input data
+                var request = packetStream.ReadPacket();
+                var response = commandRunner.Run(request);
+                packetStream.WritePacket(response);
             }
-            catch (Exception e)
-            {
-                logger.Log(e.ToString(), LogLevel.Error);
-            }
+        }
+        catch (EndOfStreamException)
+        {
+            // end of input data
+        }
+        catch (Exception e)
+        {
+            logger.Log(e.ToString(), LogLevel.Error);
         }
     }
 }

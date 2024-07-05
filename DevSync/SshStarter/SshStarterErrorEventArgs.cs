@@ -1,9 +1,8 @@
 ﻿using System;
 
-namespace DevSync.SshStarter
+namespace DevSync.SshStarter;
+
+public class SshStarterErrorEventArgs(string error) : EventArgs
 {
-    public class SshStarterErrorEventArgs : EventArgs
-    {
-        public string Error { get; set; }
-    }
+    public string Error { get; set; } = error;
 }

@@ -1,20 +1,14 @@
 ﻿using DevSyncLib.Logger;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public abstract class Packet(ILogger logger)
 {
-    public abstract class Packet
-    {
-        protected readonly ILogger Logger;
+    protected readonly ILogger Logger = logger;
 
-        protected Packet(ILogger logger)
-        {
-            Logger = logger;
-        }
+    public abstract short Signature { get; }
 
-        public abstract short Signature { get; }
+    public abstract void Read(Reader reader);
 
-        public abstract void Read(Reader reader);
-
-        public abstract void Write(Writer writer);
-    }
+    public abstract void Write(Writer writer);
 }

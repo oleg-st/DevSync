@@ -1,38 +1,32 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace DevSyncLib
+namespace DevSyncLib;
+
+public struct SlimStopwatch
 {
-    public struct SlimStopwatch
+    private const long NoTimestamp = -1;
+
+    public long StartTimestamp;
+
+    public static SlimStopwatch Create(bool start = false) => 
+        new() { StartTimestamp = start  ? Stopwatch.GetTimestamp() : NoTimestamp };
+
+    public static SlimStopwatch StartNew() => Create(true);
+
+    public bool IsRunning => StartTimestamp != NoTimestamp;
+
+    public void Stop()
     {
-        private const long NoTimestamp = -1;
+        StartTimestamp = NoTimestamp;
+    }
 
-        public long StartTimestamp;
+    public long ElapsedMilliseconds => StartTimestamp != NoTimestamp ? (Stopwatch.GetTimestamp() - StartTimestamp) * 1000 / Stopwatch.Frequency : 0;
 
-        public static SlimStopwatch Create(bool start = false)
-        {
-            return new SlimStopwatch { StartTimestamp = start  ? Stopwatch.GetTimestamp() : NoTimestamp };
-        }
+    public TimeSpan Elapsed => TimeSpan.FromMilliseconds(ElapsedMilliseconds);
 
-        public static SlimStopwatch StartNew()
-        {
-            return Create(true);
-        }
-
-        public bool IsRunning => StartTimestamp != NoTimestamp;
-
-        public void Stop()
-        {
-            StartTimestamp = NoTimestamp;
-        }
-
-        public long ElapsedMilliseconds => StartTimestamp != NoTimestamp ? (Stopwatch.GetTimestamp() - StartTimestamp) * 1000 / Stopwatch.Frequency : 0;
-
-        public TimeSpan Elapsed => TimeSpan.FromMilliseconds(ElapsedMilliseconds);
-
-        public void Start()
-        {
-            StartTimestamp = Stopwatch.GetTimestamp();
-        }
+    public void Start()
+    {
+        StartTimestamp = Stopwatch.GetTimestamp();
     }
 }

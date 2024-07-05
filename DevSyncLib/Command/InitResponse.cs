@@ -1,25 +1,20 @@
 ﻿using DevSyncLib.Logger;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public class InitResponse(ILogger logger) : Packet(logger)
 {
-    public class InitResponse : Packet
+    public override short Signature => 2;
+
+    public bool Ok;
+
+    public override void Read(Reader reader)
     {
-        public override short Signature => 2;
+        Ok = reader.ReadBool();
+    }
 
-        public bool Ok;
-
-        public override void Read(Reader reader)
-        {
-            Ok = reader.ReadBool();
-        }
-
-        public override void Write(Writer writer)
-        {
-            writer.WriteBool(Ok);
-        }
-
-        public InitResponse(ILogger logger) : base(logger)
-        {
-        }
+    public override void Write(Writer writer)
+    {
+        writer.WriteBool(Ok);
     }
 }

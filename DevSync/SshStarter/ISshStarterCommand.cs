@@ -1,20 +1,21 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
-namespace DevSync.SshStarter
+namespace DevSync.SshStarter;
+
+public interface ISshStarterCommand : IDisposable
 {
-    public interface ISshStarterCommand : IDisposable
-    {
-        event EventHandler OnExit;
+    event EventHandler OnExit;
 
-        int? ExitCode { get; }
+    int? ExitCode { get; }
 
-        string Error { get; }
+    string? Error { get; }
 
-        Stream OutputStream { get; }
+    Stream OutputStream { get; }
 
-        Stream InputStream { get; }
+    Stream InputStream { get; }
 
-        void Wait();
-    }
+    [MemberNotNull(nameof(Error))]
+    void Wait();
 }

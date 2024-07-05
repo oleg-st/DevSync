@@ -1,8 +1,7 @@
-﻿namespace DevSync.SshStarter
+﻿namespace DevSync.SshStarter;
+
+public enum AuthenticationMethodMode
 {
-    public enum AuthenticationMethodMode
-    {
-        Key,
-        Password
-    }
+    Key,
+    Password
 }

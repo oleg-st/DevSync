@@ -1,0 +1,18 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <TargetFrameworks>net5.0;net6.0;net7.0;net8.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Oleg Stepanischev</Authors>
+    <Version>0.37</Version>
+    <Copyright>$(Authors)</Copyright>
+    <Company>$(Authors)</Company>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
+</Project>

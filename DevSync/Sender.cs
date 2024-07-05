@@ -4,765 +4,772 @@ using DevSyncLib.Command;
 using DevSyncLib.Logger;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
 
-namespace DevSync
+namespace DevSync;
+
+public partial class Sender : IDisposable
 {
-    public partial class Sender : IDisposable
+    private const int ShutdownTimeout = 5000;
+
+    private readonly ILogger _logger;
+    private volatile bool _needToScan, _needToQuit, _gitIsBusy;
+    private FileSystemWatcher? _fileSystemWatcher;
+
+    private readonly string _srcPath;
+
+    private readonly FileMaskList _excludeList;
+
+    private readonly Changes _changes;
+    private readonly AgentStarter _agentStarter;
+
+    private static ReadOnlySpan<char> GitIndexLockFilename => ".git/index.lock";
+    private static ReadOnlySpan<char> GitIndexLockFilenameAlt => ".git\\index.lock";
+
+    private readonly ManualResetEvent _hasWorkEvent = new(false);
+    private readonly ManualResetEvent _gitIsReadyEvent = new(true);
+
+    private readonly ApplyRequest _applyRequest;
+    private readonly PathScanner _pathScanner;
+    private readonly SentReporter _sentReporter;
+    private bool _isSending;
+    private readonly CancellationTokenSource _cancellationTokenSource;
+
+    protected class SentReporter(ILogger logger)
     {
-        private const int ShutdownTimeout = 5000;
+        private SlimStopwatch _stopwatch = SlimStopwatch.Create();
+        private int _totalCount;
+        private long _totalSize;
+        private string? _lastChange;
+        private const int ReportInterval = 1000;
+        private TimeSpan _timeSpan = TimeSpan.Zero;
 
-        private readonly ILogger _logger;
-        private volatile bool _needToScan, _needToQuit, _gitIsBusy;
-        private FileSystemWatcher _fileSystemWatcher;
-
-        private readonly string _srcPath;
-
-        private readonly FileMaskList _excludeList;
-
-        private readonly Changes _changes;
-        private readonly AgentStarter _agentStarter;
-
-        private ReadOnlySpan<char> GitIndexLockFilename => ".git/index.lock";
-        private ReadOnlySpan<char> GitIndexLockFilenameAlt => ".git\\index.lock";
-
-        private readonly ManualResetEvent _hasWorkEvent = new ManualResetEvent(false);
-        private readonly ManualResetEvent _gitIsReadyEvent = new ManualResetEvent(true);
-
-        private readonly ApplyRequest _applyRequest;
-        private readonly PathScanner _pathScanner;
-        private readonly SentReporter _sentReporter;
-        private bool _isSending;
-        private readonly CancellationTokenSource _cancellationTokenSource;
-
-        protected class SentReporter
+        public void Report(List<FsSenderChange> changes, long size, TimeSpan timeSpan)
         {
-            private SlimStopwatch _stopwatch;
-            private int _totalCount;
-            private long _totalSize;
-            private readonly ILogger _logger;
-            private string _lastChange;
-            private const int ReportInterval = 1000;
-            private TimeSpan _timeSpan;
-
-            public SentReporter(ILogger logger)
+            _totalCount += changes.Count;
+            _totalSize += size;
+            _timeSpan += timeSpan;
+            if (_totalCount == 1 && changes.Count == 1)
             {
-                _logger = logger;
-                _stopwatch = SlimStopwatch.Create();
-                _timeSpan = TimeSpan.Zero;
+                _lastChange = changes.First().ToString();
             }
-
-            public void Report(List<FsSenderChange> changes, long size, TimeSpan timeSpan)
+            if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > ReportInterval)
             {
-                _totalCount += changes.Count;
-                _totalSize += size;
-                _timeSpan += timeSpan;
-                if (_totalCount == 1 && changes.Count == 1)
-                {
-                    _lastChange = changes.First().ToString();
-                }
-                if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > ReportInterval)
-                {
-                    Flush();
-                }
-            }
-
-            public void Flush()
-            {
-                if (_totalCount <= 0)
-                {
-                    return;
-                }
-
-                _logger.Log(_totalCount == 1
-                    ? $"Sent {_lastChange} in {(int)_timeSpan.TotalMilliseconds} ms"
-                    : $"Sent {_totalCount} changes, {PrettySize(_totalSize)} in {(int)_timeSpan.TotalMilliseconds} ms");
-
-                _lastChange = "";
-                _totalCount = 0;
-                _totalSize = 0;
-                _timeSpan = TimeSpan.Zero;
-                _stopwatch.Start();
+                Flush();
             }
         }
 
-        public Sender(SyncOptions syncOptions, ILogger logger)
+        public void Flush()
         {
-            _logger = logger;
-            _pathScanner = new PathScanner(this);
-            _sentReporter = new SentReporter(_logger);
-            _srcPath = Path.GetFullPath(syncOptions.SourcePath);
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            if (!Directory.Exists(_srcPath))
+            if (_totalCount <= 0)
             {
-                throw new SyncException($"Invalid source path: {_srcPath}");
+                return;
             }
 
-            _excludeList = new FileMaskList();
-            _excludeList.SetList(syncOptions.ExcludeList);
+            logger.Log(_totalCount == 1
+                ? $"Sent {_lastChange} in {(int)_timeSpan.TotalMilliseconds} ms"
+                : $"Sent {_totalCount} changes, {PrettySize(_totalSize)} in {(int)_timeSpan.TotalMilliseconds} ms");
 
-            _changes = new Changes();
-            _needToScan = true;
-            _agentStarter = AgentStarter.Create(syncOptions, _logger);
-            _logger.Log($"Sync {syncOptions}");
-            _applyRequest = new ApplyRequest(_logger)
-            {
-                BasePath = _srcPath,
-            };
-            UpdateHasWork();
+            _lastChange = "";
+            _totalCount = 0;
+            _totalSize = 0;
+            _timeSpan = TimeSpan.Zero;
+            _stopwatch.Start();
+        }
+    }
+
+    public Sender(SyncOptions syncOptions, ILogger logger)
+    {
+        if (!syncOptions.IsFilled)
+        {
+            throw new SyncException("Sync options is not filled");
         }
 
-        private void UpdateHasWork()
+        _logger = logger;
+        _pathScanner = new PathScanner(this);
+        _sentReporter = new SentReporter(_logger);
+        _srcPath = Path.GetFullPath(syncOptions.SourcePath);
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        if (!Directory.Exists(_srcPath))
         {
-            lock (_changes)
+            throw new SyncException($"Invalid source path: {_srcPath}");
+        }
+
+        _excludeList = new FileMaskList();
+        _excludeList.SetList(syncOptions.ExcludeList);
+
+        _changes = new Changes();
+        _needToScan = true;
+        _agentStarter = AgentStarter.Create(syncOptions, _logger);
+        _logger.Log($"Sync {syncOptions}");
+        _applyRequest = new ApplyRequest(_logger)
+        {
+            BasePath = _srcPath,
+        };
+        UpdateHasWork();
+    }
+
+    private void UpdateHasWork()
+    {
+        lock (_changes)
+        {
+            if (HasWork)
             {
-                if (HasWork)
-                {
-                    _hasWorkEvent.Set();
-                }
-                else
-                {
-                    _hasWorkEvent.Reset();
-                }
-
-                if (_gitIsBusy)
-                {
-                    _gitIsReadyEvent.Reset();
-                }
-                else
-                {
-                    _gitIsReadyEvent.Set();
-                }
-
+                _hasWorkEvent.Set();
             }
-        }
-
-        private void Scan()
-        {
-            var sw = SlimStopwatch.StartNew();
-            List<FsEntry> srcList = null;
-            Dictionary<string, FsEntry> destList;
-            /*
-             * Start agent before scan source
-             *
-             * Old timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
-             *               [Secondary thread]  Scan source ................................. Finish
-             *
-             * New timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
-             *               [Secondary thread]            Scan source ....................... Finish
-             *
-             * A failed start could cause unnecessary scanning source in old timeline.
-             * No need to scan source before start in most cases because it is about as fast as the scan destination.
-             */
-            using (var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token))
+            else
             {
-                var cancellationToken = tokenSource.Token;
-                cancellationToken.ThrowIfCancellationRequested();
+                _hasWorkEvent.Reset();
+            }
 
-                _agentStarter.Start();
+            if (_gitIsBusy)
+            {
+                _gitIsReadyEvent.Reset();
+            }
+            else
+            {
+                _gitIsReadyEvent.Set();
+            }
 
-                // scan source
-                var task = Task.Run(() =>
-                {
-                    try
-                    {
-                        var swScanSource = SlimStopwatch.StartNew();
-                        var scanDirectory =
-                            new ScanDirectory(_logger, _excludeList, cancellationToken: cancellationToken);
-                        srcList = scanDirectory.ScanPath(_srcPath).ToList();
-                        cancellationToken.ThrowIfCancellationRequested();
-                        _logger.Log($"Scanned source {srcList.Count} items in {swScanSource.ElapsedMilliseconds} ms");
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        srcList = null;
-                    }
-                }, cancellationToken);
+        }
+    }
 
+    private void Scan()
+    {
+        var sw = SlimStopwatch.StartNew();
+        List<FsEntry>? srcList = null;
+        Dictionary<string, FsEntry> destList;
+        /*
+         * Start agent before scan source
+         *
+         * Old timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
+         *               [Secondary thread]  Scan source ................................. Finish
+         *
+         * New timeline: [Main thread]       Start ... Initialize ... Scan destination ... Finish
+         *               [Secondary thread]            Scan source ....................... Finish
+         *
+         * A failed start could cause unnecessary scanning source in old timeline.
+         * No need to scan source before start in most cases because it is about as fast as the scan destination.
+         */
+        using (var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token))
+        {
+            var cancellationToken = tokenSource.Token;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _agentStarter.Start();
+
+            // scan source
+            var task = Task.Run(() =>
+            {
                 try
                 {
-                    var swScanDestination = SlimStopwatch.StartNew();
-                    // scan destination
-                    var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
-                    destList = response.FileList.ToDictionary(x => x.Path, y => y);
-                    _logger.Log(
-                        $"Scanned destination {destList.Count} items in {swScanDestination.ElapsedMilliseconds} ms");
-                    task.Wait(cancellationToken);
+                    var swScanSource = SlimStopwatch.StartNew();
+                    var scanDirectory =
+                        new ScanDirectory(_logger, _excludeList, cancellationToken: cancellationToken);
+                    srcList = scanDirectory.ScanPath(_srcPath).ToList();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    _logger.Log($"Scanned source {srcList.Count} items in {swScanSource.ElapsedMilliseconds} ms");
                 }
-                catch (Exception)
+                catch (OperationCanceledException)
                 {
-                    tokenSource.Cancel();
-                    throw;
+                    srcList = null;
                 }
-            }
+            }, cancellationToken);
 
-            // During scan, changes could come from file system events or from PathScanner, we should not overwrite them.
-            var itemsCount = 0;
-            long changesSize = 0;
-            lock (_changes)
+            try
             {
-                foreach (var srcEntry in srcList)
+                var swScanDestination = SlimStopwatch.StartNew();
+                // scan destination
+                var response = _agentStarter.SendCommand<ScanResponse>(new ScanRequest(_logger));
+                destList = response.FileList!.ToDictionary(x => x.Path, y => y);
+                _logger.Log(
+                    $"Scanned destination {destList.Count} items in {swScanDestination.ElapsedMilliseconds} ms");
+                task.Wait(cancellationToken);
+            }
+            catch (Exception)
+            {
+                tokenSource.Cancel();
+                throw;
+            }
+        }
+
+        Debug.Assert(srcList != null);
+
+        // During scan, changes could come from file system events or from PathScanner, we should not overwrite them.
+        var itemsCount = 0;
+        long changesSize = 0;
+        lock (_changes)
+        {
+            foreach (var srcEntry in srcList)
+            {
+                if (!destList.TryGetValue(srcEntry.Path, out var destEntry))
                 {
-                    if (!destList.TryGetValue(srcEntry.Path, out var destEntry))
-                    {
-                        destEntry = FsEntry.Empty;
-                    }
-
-                    // Skip changed srcEntry
-                    if (!_changes.ContainsKey(srcEntry.Path))
-                    {
-                        // add to changes (no replace)
-                        if (!srcEntry.Equals(destEntry))
-                        {
-                            itemsCount++;
-                            if (!srcEntry.IsDirectory)
-                            {
-                                changesSize += srcEntry.Length;
-                            }
-                            AddChange(FsSenderChange.CreateChange(srcEntry), false);
-                        }
-                    }
-
-                    if (!destEntry.IsEmpty)
-                    {
-                        destList.Remove(destEntry.Path);
-                    }
+                    destEntry = FsEntry.Empty;
                 }
 
-                // add deletes
-                foreach (var destEntry in destList.Values)
+                // Skip changed srcEntry
+                if (!_changes.ContainsKey(srcEntry.Path))
                 {
-                    // Skip changed destEntry
-                    if (!_changes.ContainsKey(destEntry.Path))
+                    // add to changes (no replace)
+                    if (!srcEntry.Equals(destEntry))
                     {
                         itemsCount++;
-                        AddChange(FsSenderChange.CreateRemove(destEntry.Path), false);
+                        if (!srcEntry.IsDirectory)
+                        {
+                            changesSize += srcEntry.Length;
+                        }
+                        AddChange(FsSenderChange.CreateChange(srcEntry), false);
                     }
+                }
+
+                if (!destEntry.IsEmpty)
+                {
+                    destList.Remove(destEntry.Path);
                 }
             }
 
-            _needToScan = false;
-            _logger.Log(
-                $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(changesSize)} to send");
-            UpdateHasWork();
+            // add deletes
+            foreach (var destEntry in destList.Values)
+            {
+                // Skip changed destEntry
+                if (!_changes.ContainsKey(destEntry.Path))
+                {
+                    itemsCount++;
+                    AddChange(FsSenderChange.CreateRemove(destEntry.Path), false);
+                }
+            }
         }
 
-        private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
+        _needToScan = false;
+        _logger.Log(
+            $"Scanned in {sw.ElapsedMilliseconds} ms, {itemsCount} items, {PrettySize(changesSize)} to send");
+        UpdateHasWork();
+    }
+
+    private void AddChange(FsSenderChange fsSenderChange, bool notifyHasWork = true, bool withSubdirectories = false)
+    {
+        if (_logger.IsDebug)
         {
-            if (_logger.IsDebug)
+            _logger.Log($"AddChange {fsSenderChange}", LogLevel.Debug);
+        }
+
+        // ignore empty path
+        if (string.IsNullOrEmpty(fsSenderChange.Path))
+        {
+            return;
+        }
+
+        lock (_changes)
+        {
+            if (_changes.Remove(fsSenderChange.Path, out var oldFsChange))
             {
-                _logger.Log($"AddChange {fsSenderChange}", LogLevel.Debug);
+                oldFsChange.Expired = true;
+                // Rename + Change -> Combine
+                if (fsSenderChange.IsChange && oldFsChange.IsRename)
+                {
+                    fsSenderChange.Combine(oldFsChange);
+                }
             }
 
-            // ignore empty path
-            if (string.IsNullOrEmpty(fsSenderChange.Path))
+            _changes.Add(fsSenderChange.Path, fsSenderChange);
+
+            if (fsSenderChange.IsRename)
             {
-                return;
+                // replace changes inside OldPath to Path
+                var oldPathPrefix = fsSenderChange.OldPath + "/";
+                var insideOldPathFsChanges = _changes.Values
+                    .Where(fsChange => !fsChange.Opened &&
+                                       (((fsChange.IsChange || fsChange.IsRename) && fsChange.Path.StartsWith(oldPathPrefix)) 
+                                        || (fsChange.IsRename && fsChange.OldPath.StartsWith(oldPathPrefix)))
+                    )
+                    .ToList();
+
+                var index = oldPathPrefix.Length - 1;
+                foreach (var insideOldPathFsChange in insideOldPathFsChanges)
+                {
+                    Debug.Assert(insideOldPathFsChange.IsChange || insideOldPathFsChange.IsRename);
+
+                    insideOldPathFsChange.Expired = true;
+                    _changes.Remove(insideOldPathFsChange.Path);
+
+                    // update Path
+                    var newPath = insideOldPathFsChange.Path.StartsWith(oldPathPrefix)
+                        ? string.Concat(fsSenderChange.Path, insideOldPathFsChange.Path.AsSpan(index))
+                        : insideOldPathFsChange.Path;
+
+                    var newChange = FsSenderChange.CreateWithPath(insideOldPathFsChange, newPath);
+                    // update OldPath
+                    if (newChange.IsRename && newChange.OldPath.StartsWith(oldPathPrefix))
+                    {
+                        newChange.OldPath = string.Concat(fsSenderChange.Path, newChange.OldPath.AsSpan(index));
+                    }
+                    AddChange(newChange);
+                }
+
+                // expire and combine change with OldPath
+                if (_changes.TryGetValue(fsSenderChange.OldPath, out var oldPathFsChange) &&
+                    oldPathFsChange is { Opened: false, IsChange: true })
+                {
+                    oldPathFsChange.Expired = true;
+                    // Change + Rename -> Combine
+                    fsSenderChange.Combine(oldPathFsChange);
+                }
+            }
+        }
+
+        if (withSubdirectories)
+        {
+            _pathScanner.Add(fsSenderChange.Path);
+        }
+
+        if (notifyHasWork)
+        {
+            UpdateHasWork();
+        }
+    }
+
+    private ReadOnlySpan<char> GetRelativePath(string? fullPath)
+    {
+        if (fullPath == null)
+        {
+            return [];
+        }
+
+        // fast path
+        if (fullPath.StartsWith(_srcPath))
+        {
+            var span = fullPath.AsSpan(_srcPath.Length);
+            var index = 0;
+            var length = span.Length;
+            // skip [/\\]+
+            while (index < length && (span[index] == '/' || span[index] == '\\'))
+            {
+                index++;
             }
 
+            // has /
+            if (index > 0)
+            {
+                // Slice instead of GetRelativePath
+                return span[index..];
+            }
+        }
+
+        // slow path
+        return Path.GetRelativePath(_srcPath, fullPath).AsSpan();
+    }
+
+    private static bool IsGitIndexLockFilename(ReadOnlySpan<char> path) =>
+        path.SequenceEqual(GitIndexLockFilename) || path.SequenceEqual(GitIndexLockFilenameAlt);
+
+    private static string NormalizeRelativePath(ReadOnlySpan<char> relativePath) => 
+        FsEntry.NormalizeSlash(relativePath);
+
+    private void OnWatcherChanged(object source, FileSystemEventArgs e)
+    {
+        var relativePath = GetRelativePath(e.FullPath);
+        // ignore event for srcPath (don't know why it occurs rarely)
+        if (relativePath.IsEmpty)
+        {
+            return;
+        }
+
+        if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && IsGitIndexLockFilename(relativePath))
+        {
+            SetGitIsBusy(true);
+        }
+
+        if (_excludeList.IsMatch(relativePath))
+        {
+            return;
+        }
+        AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
+    }
+
+    private void OnWatcherDeleted(object source, FileSystemEventArgs e)
+    {
+        var relativePath = GetRelativePath(e.FullPath);
+        // ignore event for srcPath (don't know why it occurs rarely)
+        if (relativePath.IsEmpty)
+        {
+            return;
+        }
+
+        if (_gitIsBusy && IsGitIndexLockFilename(relativePath))
+        {
+            SetGitIsBusy(false);
+        }
+
+        if (_excludeList.IsMatch(relativePath))
+        {
+            return;
+        }
+
+        AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(relativePath)));
+    }
+
+    private void OnWatcherRenamed(object source, RenamedEventArgs e)
+    {
+        var relativePath = GetRelativePath(e.FullPath);
+        var oldRelativePath = GetRelativePath(e.OldFullPath);
+        // ignore event for srcPath (don't know why it occurs rarely)
+        if (relativePath.IsEmpty || oldRelativePath.IsEmpty)
+        {
+            return;
+        }
+
+        if (_gitIsBusy && IsGitIndexLockFilename(oldRelativePath))
+        {
+            SetGitIsBusy(false);
+        }
+
+        // is new file excluded?
+        if (_excludeList.IsMatch(relativePath))
+        {
+            // old file is not excluded -> delete it
+            if (!_excludeList.IsMatch(oldRelativePath))
+            {
+                AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(oldRelativePath)));
+            }
+
+            // both files are excluded -> do nothing
+        }
+        else // new file is not excluded
+        {
+            // old file is excluded -> send change with withSubdirectories
+            if (_excludeList.IsMatch(oldRelativePath))
+            {
+                AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: true);
+            }
+            else
+            {
+                // both files are not excluded -> send rename
+                AddChange(FsSenderChange.CreateRename(NormalizeRelativePath(relativePath), NormalizeRelativePath(oldRelativePath)));
+            }
+        }
+    }
+
+    private bool HasChanges
+    {
+        get
+        {
             lock (_changes)
             {
-                if (_changes.Remove(fsSenderChange.Path, out var oldFsChange))
+                return _changes.Count > 0;
+            }
+        }
+    }
+
+    private bool HasWork => _needToQuit || _needToScan || HasChanges;
+    private void SetGitIsBusy(bool value)
+    {
+        _gitIsBusy = value;
+        UpdateHasWork();
+    }
+
+    private void WaitForWork()
+    {
+        const int readyTimeout = 300;
+        var waitForReady = true;
+        var sw = SlimStopwatch.StartNew();
+        while (!HasWork)
+        {
+            var timeout = Timeout.Infinite;
+            var waitForGit = false;
+            if (waitForReady)
+            {
+                var elapsed = sw.ElapsedMilliseconds;
+                // no work for some time and git is not busy
+                if (elapsed >= readyTimeout)
                 {
-                    oldFsChange.Expired = true;
-                    // Rename + Change -> Combine
-                    if (fsSenderChange.IsChange && oldFsChange.IsRename)
+                    if (!_gitIsBusy)
                     {
-                        fsSenderChange.Combine(oldFsChange);
-                    }
-                }
-
-                _changes.Add(fsSenderChange.Path, fsSenderChange);
-
-                if (fsSenderChange.IsRename)
-                {
-                    // replace changes inside OldPath to Path
-                    var oldPathPrefix = fsSenderChange.OldPath + "/";
-                    var insideOldPathFsChanges = _changes.Values
-                        .Where(fsChange => !fsChange.Opened &&
-                            (((fsChange.IsChange || fsChange.IsRename) && fsChange.Path.StartsWith(oldPathPrefix)) 
-                            || (fsChange.IsRename && fsChange.OldPath.StartsWith(oldPathPrefix)))
-                        )
-                        .ToList();
-
-                    var index = oldPathPrefix.Length - 1;
-                    foreach (var insideOldPathFsChange in insideOldPathFsChanges)
-                    {
-                        insideOldPathFsChange.Expired = true;
-                        _changes.Remove(insideOldPathFsChange.Path);
-
-                        // update Path
-                        var newPath = insideOldPathFsChange.Path.StartsWith(oldPathPrefix)
-                            ? string.Concat(fsSenderChange.Path, insideOldPathFsChange.Path.AsSpan(index))
-                            : insideOldPathFsChange.Path;
-
-                        var newChange = FsSenderChange.CreateWithPath(insideOldPathFsChange, newPath);
-                        // update OldPath
-                        if (newChange.IsRename && newChange.OldPath.StartsWith(oldPathPrefix))
-                        {
-                            newChange.OldPath = string.Concat(fsSenderChange.Path, newChange.OldPath.AsSpan(index));
-                        }
-                        AddChange(newChange);
-                    }
-
-                    // expire and combine change with OldPath
-                    if (_changes.TryGetValue(fsSenderChange.OldPath, out var oldPathFsChange) &&
-                        !oldPathFsChange.Opened && oldPathFsChange.IsChange)
-                    {
-                        oldPathFsChange.Expired = true;
-                        // Change + Rename -> Combine
-                        fsSenderChange.Combine(oldPathFsChange);
-                    }
-                }
-            }
-
-            if (withSubdirectories)
-            {
-                _pathScanner.Add(fsSenderChange.Path);
-            }
-
-            if (notifyHasWork)
-            {
-                UpdateHasWork();
-            }
-        }
-
-        private ReadOnlySpan<char> GetRelativePath(string fullPath)
-        {
-            if (fullPath == null)
-            {
-                return ReadOnlySpan<char>.Empty;
-            }
-
-            // fast path
-            if (fullPath.StartsWith(_srcPath))
-            {
-                var span = fullPath.AsSpan(_srcPath.Length);
-                var index = 0;
-                var length = span.Length;
-                // skip [/\\]+
-                while (index < length && (span[index] == '/' || span[index] == '\\'))
-                {
-                    index++;
-                }
-
-                // has /
-                if (index > 0)
-                {
-                    // Slice instead of GetRelativePath
-                    return span[index..];
-                }
-            }
-
-            // slow path
-            return Path.GetRelativePath(_srcPath, fullPath).AsSpan();
-        }
-
-        private bool IsGitIndexLockFilename(ReadOnlySpan<char> path) =>
-            path.SequenceEqual(GitIndexLockFilename) || path.SequenceEqual(GitIndexLockFilenameAlt);
-
-        private string NormalizeRelativePath(ReadOnlySpan<char> relativePath) => 
-            FsEntry.NormalizeSlash(relativePath);
-
-        private void OnWatcherChanged(object source, FileSystemEventArgs e)
-        {
-            var relativePath = GetRelativePath(e.FullPath);
-            // ignore event for srcPath (don't know why it occurs rarely)
-            if (relativePath.IsEmpty)
-            {
-                return;
-            }
-
-            if (!_gitIsBusy && e.ChangeType == WatcherChangeTypes.Created && IsGitIndexLockFilename(relativePath))
-            {
-                SetGitIsBusy(true);
-            }
-
-            if (_excludeList.IsMatch(relativePath))
-            {
-                return;
-            }
-            AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: e.ChangeType == WatcherChangeTypes.Created);
-        }
-
-        private void OnWatcherDeleted(object source, FileSystemEventArgs e)
-        {
-            var relativePath = GetRelativePath(e.FullPath);
-            // ignore event for srcPath (don't know why it occurs rarely)
-            if (relativePath.IsEmpty)
-            {
-                return;
-            }
-
-            if (_gitIsBusy && IsGitIndexLockFilename(relativePath))
-            {
-                SetGitIsBusy(false);
-            }
-
-            if (_excludeList.IsMatch(relativePath))
-            {
-                return;
-            }
-
-            AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(relativePath)));
-        }
-
-        private void OnWatcherRenamed(object source, RenamedEventArgs e)
-        {
-            var relativePath = GetRelativePath(e.FullPath);
-            var oldRelativePath = GetRelativePath(e.OldFullPath);
-            // ignore event for srcPath (don't know why it occurs rarely)
-            if (relativePath.IsEmpty || oldRelativePath.IsEmpty)
-            {
-                return;
-            }
-
-            if (_gitIsBusy && IsGitIndexLockFilename(oldRelativePath))
-            {
-                SetGitIsBusy(false);
-            }
-
-            // is new file excluded?
-            if (_excludeList.IsMatch(relativePath))
-            {
-                // old file is not excluded -> delete it
-                if (!_excludeList.IsMatch(oldRelativePath))
-                {
-                    AddChange(FsSenderChange.CreateRemove(NormalizeRelativePath(oldRelativePath)));
-                }
-
-                // both files are excluded -> do nothing
-            }
-            else // new file is not excluded
-            {
-                // old file is excluded -> send change with withSubdirectories
-                if (_excludeList.IsMatch(oldRelativePath))
-                {
-                    AddChange(FsSenderChange.CreateChange(NormalizeRelativePath(relativePath)), withSubdirectories: true);
-                }
-                else
-                {
-                    // both files are not excluded -> send rename
-                    AddChange(FsSenderChange.CreateRename(NormalizeRelativePath(relativePath), NormalizeRelativePath(oldRelativePath)));
-                }
-            }
-        }
-
-        private bool HasChanges
-        {
-            get
-            {
-                lock (_changes)
-                {
-                    return _changes.Count > 0;
-                }
-            }
-        }
-
-        private bool HasWork => _needToQuit || _needToScan || HasChanges;
-        private void SetGitIsBusy(bool value)
-        {
-            _gitIsBusy = value;
-            UpdateHasWork();
-        }
-
-        private void WaitForWork()
-        {
-            const int readyTimeout = 300;
-            var waitForReady = true;
-            var sw = SlimStopwatch.StartNew();
-            while (!HasWork)
-            {
-                var timeout = Timeout.Infinite;
-                var waitForGit = false;
-                if (waitForReady)
-                {
-                    var elapsed = sw.ElapsedMilliseconds;
-                    // no work for some time and git is not busy
-                    if (elapsed >= readyTimeout)
-                    {
-                        if (!_gitIsBusy)
-                        {
-                            _sentReporter.Flush();
-                            _logger.Log("Ready");
-                            waitForReady = false;
-                            _isSending = false;
-                        }
-                        else
-                        {
-                            waitForGit = true;
-                        }
+                        _sentReporter.Flush();
+                        _logger.Log("Ready");
+                        waitForReady = false;
+                        _isSending = false;
                     }
                     else
                     {
-                        timeout = readyTimeout - (int)elapsed;
+                        waitForGit = true;
                     }
-                }
-
-                if (waitForGit)
-                {
-                    WaitHandle.WaitAny(new WaitHandle[] { _hasWorkEvent, _gitIsReadyEvent }, timeout);
                 }
                 else
                 {
-                    _hasWorkEvent.WaitOne(timeout);
+                    timeout = readyTimeout - (int)elapsed;
                 }
             }
-        }
 
-        private static string PrettySize(long size)
-        {
-            string[] sizes = { "bytes", "KB", "MB", "GB", "TB" };
-            double doubleSize = size;
-            var order = 0;
-            while (doubleSize >= 1024 && order < sizes.Length - 1)
+            if (waitForGit)
             {
-                order++;
-                doubleSize /= 1024;
+                WaitHandle.WaitAny([_hasWorkEvent, _gitIsReadyEvent], timeout);
             }
-            return $"{doubleSize:0.##} {sizes[order]}";
-        }
-
-
-        private bool SendChanges()
-        {
-            // fetch changes
-            lock (_changes)
+            else
             {
-                if (_changes.Count == 0)
-                {
-                    return true;
-                }
-
-                // filter not ready changes
-                _applyRequest.SetChanges(_changes.Values.Where(x => x.IsReady));
+                _hasWorkEvent.WaitOne(timeout);
             }
+        }
+    }
 
-            // nothing to send -> has not ready changes
-            if (!_applyRequest.HasChanges)
+    private static string PrettySize(long size)
+    {
+        string[] sizes = ["bytes", "KB", "MB", "GB", "TB"];
+        double doubleSize = size;
+        var order = 0;
+        while (doubleSize >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            doubleSize /= 1024;
+        }
+        return $"{doubleSize:0.##} {sizes[order]}";
+    }
+
+
+    private bool SendChanges()
+    {
+        // fetch changes
+        lock (_changes)
+        {
+            if (_changes.Count == 0)
             {
-                // waiting for change is getting ready or we get new ready changes
-                Thread.Sleep(FsSenderChange.WaitForReadyTimeoutMs);
                 return true;
             }
 
-            if (!_isSending)
-            {
-                _logger.Log("Sending");
-                _isSending = true;
-            }
+            // filter not ready changes
+            _applyRequest.SetChanges(_changes.Values.Where(x => x.IsReady));
+        }
 
-            if (_logger.IsDebug)
-            {
-                _logger.Log($"Sending: {_applyRequest.Changes.Select(k => k.ToString()).Aggregate(new System.Text.StringBuilder(), (current, next) => current.Append(current.Length == 0 ? "" : ", ").Append(next))}", LogLevel.Debug);
-            }
+        // nothing to send -> has not ready changes
+        if (!_applyRequest.HasChanges)
+        {
+            // waiting for change is getting ready, or we get new ready changes
+            Thread.Sleep(FsSenderChange.WaitForReadyTimeoutMs);
+            return true;
+        }
 
-            var sw = SlimStopwatch.StartNew();
-            var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
-            var responseResult = response.Result.ToDictionary(x => x.Key, y => y);
+        if (!_isSending)
+        {
+            _logger.Log("Sending");
+            _isSending = true;
+        }
 
-            bool hasErrors = false;
-            // process sent changes
-            lock (_changes)
+        if (_logger.IsDebug)
+        {
+            _logger.Log($"Sending: {_applyRequest.Changes.Select(k => k.ToString()).Aggregate(new System.Text.StringBuilder(), (current, next) => current.Append(current.Length == 0 ? "" : ", ").Append(next))}", LogLevel.Debug);
+        }
+
+        var sw = SlimStopwatch.StartNew();
+        var response = _agentStarter.SendCommand<ApplyResponse>(_applyRequest);
+        Debug.Assert(response.Result != null);
+        Debug.Assert(_applyRequest.SentChanges != null);
+
+        var responseResult = response.Result.ToDictionary(x => x.Key!, y => y);
+
+        bool hasErrors = false;
+        // process sent changes
+        lock (_changes)
+        {
+            foreach (var fsChange in _applyRequest.SentChanges)
             {
-                foreach (var fsChange in _applyRequest.SentChanges)
+                Debug.Assert(fsChange.Path != null);
+
+                if (!fsChange.Expired)
                 {
-                    if (!fsChange.Expired)
+                    if (fsChange.Vanished)
                     {
-                        if (fsChange.Vanished)
+                        if (_logger.IsDebug)
                         {
-                            if (_logger.IsDebug)
-                            {
-                                _logger.Log($"Vanished change {fsChange.Path}", LogLevel.Debug);
-                            }
-                            fsChange.DelayVanished();
+                            _logger.Log($"Vanished change {fsChange.Path}", LogLevel.Debug);
                         }
-                        else
-                        {
-                            _changes.Remove(fsChange.Path);
-                            if (responseResult.TryGetValue(fsChange.Path, out var fsChangeResult))
-                            {
-                                if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
-                                {
-                                    var withSubdirectories = false;
-                                    // ignore sender errors: just resend
-                                    if (fsChangeResult.ResultCode != FsChangeResultCode.SenderError)
-                                    {
-                                        // if rename failed -> send change with withSubdirectories
-                                        if (fsChange.IsRename)
-                                        {
-                                            if (_logger.IsDebug)
-                                            {
-                                                _logger.Log($"Rename to change {fsChange.Path} {fsChangeResult.ErrorMessage}", LogLevel.Debug);
-                                            }
-                                            withSubdirectories = true;
-                                        }
-                                        else
-                                        {
-                                            hasErrors = true;
-                                            _logger.Log(
-                                                $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
-                                        }
-                                    }
-                                    AddChange(FsSenderChange.CreateChange(fsChange.Path), false, withSubdirectories);
-                                }
-                            }
-                        }
+                        fsChange.DelayVanished();
                     }
                     else
                     {
-                        // remove expired
-                        if (_changes.TryGetValue(fsChange.Path, out var oldFsChange) && oldFsChange.Expired)
+                        _changes.Remove(fsChange.Path);
+                        if (responseResult.TryGetValue(fsChange.Path, out var fsChangeResult))
                         {
-                            _changes.Remove(fsChange.Path);
+                            if (fsChangeResult.ResultCode != FsChangeResultCode.Ok)
+                            {
+                                var withSubdirectories = false;
+                                // ignore sender errors: just resend
+                                if (fsChangeResult.ResultCode != FsChangeResultCode.SenderError)
+                                {
+                                    // if rename failed -> send change with withSubdirectories
+                                    if (fsChange.IsRename)
+                                    {
+                                        if (_logger.IsDebug)
+                                        {
+                                            _logger.Log($"Rename to change {fsChange.Path} {fsChangeResult.ErrorMessage}", LogLevel.Debug);
+                                        }
+                                        withSubdirectories = true;
+                                    }
+                                    else
+                                    {
+                                        hasErrors = true;
+                                        _logger.Log(
+                                            $"Change apply error {fsChange.ChangeType} {fsChange.Path}: {fsChangeResult.ErrorMessage ?? "-"}", LogLevel.Error);
+                                    }
+                                }
+                                AddChange(FsSenderChange.CreateChange(fsChange.Path), false, withSubdirectories);
+                            }
                         }
                     }
                 }
-            }
-
-            if (_logger.IsDebug)
-            {
-                foreach (var change in _applyRequest.SentChanges)
+                else
                 {
-                    _logger.Log($"Sent {change}", LogLevel.Debug);
+                    // remove expired
+                    if (_changes.TryGetValue(fsChange.Path, out var oldFsChange) && oldFsChange.Expired)
+                    {
+                        _changes.Remove(fsChange.Path);
+                    }
                 }
             }
-            _sentReporter.Report(_applyRequest.SentChanges, _applyRequest.SentChangesSize, sw.Elapsed);
-            _applyRequest.ClearChanges();
-            UpdateHasWork();
-            return !hasErrors;
         }
 
-        public void Run()
+        if (_logger.IsDebug)
         {
-            Console.CancelKeyPress += ConsoleOnCancelKeyPress;
-
-            _fileSystemWatcher = new FileSystemWatcher(_srcPath);
-            _fileSystemWatcher.Changed += OnWatcherChanged;
-            _fileSystemWatcher.Created += OnWatcherChanged;
-            _fileSystemWatcher.Deleted += OnWatcherDeleted;
-            _fileSystemWatcher.Renamed += OnWatcherRenamed;
-            _fileSystemWatcher.Error += FileSystemWatcherOnError;
-            _fileSystemWatcher.InternalBufferSize = 64 * 1024;
-            _fileSystemWatcher.IncludeSubdirectories = true;
-            _fileSystemWatcher.EnableRaisingEvents = true;
-
-            _pathScanner.Start();
-
-            while (!_needToQuit)
+            foreach (var change in _applyRequest.SentChanges)
             {
-                var needToWait = false;
-                try
-                {
+                _logger.Log($"Sent {change}", LogLevel.Debug);
+            }
+        }
+        _sentReporter.Report(_applyRequest.SentChanges, _applyRequest.SentChangesSize, sw.Elapsed);
+        _applyRequest.ClearChanges();
+        UpdateHasWork();
+        return !hasErrors;
+    }
 
-                    // scan
-                    if (_needToScan)
-                    {
-                        Scan();
-                    }
+    public void Run()
+    {
+        Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
-                    if (!SendChanges())
-                    {
-                        needToWait = true;
-                    }
-                }
-                catch (SyncException ex)
+        _fileSystemWatcher = new FileSystemWatcher(_srcPath);
+        _fileSystemWatcher.Changed += OnWatcherChanged;
+        _fileSystemWatcher.Created += OnWatcherChanged;
+        _fileSystemWatcher.Deleted += OnWatcherDeleted;
+        _fileSystemWatcher.Renamed += OnWatcherRenamed;
+        _fileSystemWatcher.Error += FileSystemWatcherOnError;
+        _fileSystemWatcher.InternalBufferSize = 64 * 1024;
+        _fileSystemWatcher.IncludeSubdirectories = true;
+        _fileSystemWatcher.EnableRaisingEvents = true;
+
+        _pathScanner.Start();
+
+        while (!_needToQuit)
+        {
+            var needToWait = false;
+            try
+            {
+
+                // scan
+                if (_needToScan)
                 {
-                    if (_needToQuit)
-                    {
-                        break;
-                    }
-                    _logger.Log(ex.Message, LogLevel.Error);
-                    if (!ex.Recoverable)
-                    {
-                        break;
-                    }
-                    needToWait = ex.NeedToWait;
+                    Scan();
                 }
-                catch (SyncInterruptException)
+
+                if (!SendChanges())
+                {
+                    needToWait = true;
+                }
+            }
+            catch (SyncException ex)
+            {
+                if (_needToQuit)
                 {
                     break;
                 }
-                catch (Exception ex)
+                _logger.Log(ex.Message, LogLevel.Error);
+                if (!ex.Recoverable)
                 {
-                    if (_needToQuit)
-                    {
-                        break;
-                    }
-
-                    _logger.Log(ex.Message, LogLevel.Error);
-                    needToWait = true;
+                    break;
                 }
-
+                needToWait = ex.NeedToWait;
+            }
+            catch (SyncInterruptException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
                 if (_needToQuit)
                 {
                     break;
                 }
 
-                if (needToWait)
-                {
-                    const int intervalMs = 1000;
-                    _logger.Log($"Waiting for {intervalMs} ms");
-                    // TODO: dynamic interval?
-                    _cancellationTokenSource.Token.WaitHandle.WaitOne(intervalMs);
-                }
-
-                WaitForWork();
+                _logger.Log(ex.Message, LogLevel.Error);
+                needToWait = true;
             }
-        }
 
-        private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
-        {
-            _logger.Log($"File system watcher error: {e.GetException()}", LogLevel.Error);
-            lock (_changes)
+            if (_needToQuit)
             {
-                _needToScan = true;
-                _pathScanner.Clear();
-                SetGitIsBusy(false);
-                _changes.Clear();
+                break;
             }
 
-            UpdateHasWork();
-        }
-
-        private async Task WaitForShutdown()
-        {
-            await Task.Delay(ShutdownTimeout).ConfigureAwait(false);
-            _logger.Log("Shutdown timed out", LogLevel.Warning);
-            Environment.Exit(-1);
-        }
-
-        private void Stop()
-        {
-            if (_cancellationTokenSource.IsCancellationRequested)
+            if (needToWait)
             {
-                return;
+                const int intervalMs = 1000;
+                _logger.Log($"Waiting for {intervalMs} ms");
+                // TODO: dynamic interval?
+                _cancellationTokenSource.Token.WaitHandle.WaitOne(intervalMs);
             }
 
-            Task.Factory.StartNew(WaitForShutdown, TaskCreationOptions.LongRunning);
-            _needToQuit = true;
-            _cancellationTokenSource.Cancel();
-            _agentStarter.Stop();
-            _pathScanner.Stop();
-            UpdateHasWork();
+            WaitForWork();
+        }
+    }
+
+    private void FileSystemWatcherOnError(object sender, ErrorEventArgs e)
+    {
+        _logger.Log($"File system watcher error: {e.GetException()}", LogLevel.Error);
+        lock (_changes)
+        {
+            _needToScan = true;
+            _pathScanner.Clear();
+            SetGitIsBusy(false);
+            _changes.Clear();
         }
 
-        private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        UpdateHasWork();
+    }
+
+    private async Task WaitForShutdown()
+    {
+        await Task.Delay(ShutdownTimeout).ConfigureAwait(false);
+        _logger.Log("Shutdown timed out", LogLevel.Warning);
+        Environment.Exit(-1);
+    }
+
+    private void Stop()
+    {
+        if (_cancellationTokenSource.IsCancellationRequested)
         {
-            Stop();
-            e.Cancel = true;
+            return;
         }
 
-        public void Dispose()
-        {
-            _agentStarter.Dispose();
-            _fileSystemWatcher?.Dispose();
-            _logger.Dispose();
-        }
+        Task.Factory.StartNew(WaitForShutdown, TaskCreationOptions.LongRunning);
+        _needToQuit = true;
+        _cancellationTokenSource.Cancel();
+        _agentStarter.Stop();
+        _pathScanner.Stop();
+        UpdateHasWork();
+    }
+
+    private void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        Stop();
+        e.Cancel = true;
+    }
+
+    public void Dispose()
+    {
+        _agentStarter.Dispose();
+        _fileSystemWatcher?.Dispose();
+        _logger.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

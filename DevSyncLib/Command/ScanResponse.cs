@@ -1,42 +1,39 @@
 ﻿using DevSyncLib.Logger;
 using System.Collections.Generic;
+using System.Diagnostics;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public class ScanResponse(ILogger logger) : Packet(logger)
 {
-    public class ScanResponse : Packet
+    public override short Signature => 4;
+    public IEnumerable<FsEntry>? FileList;
+
+    public override void Read(Reader reader)
     {
-        public override short Signature => 4;
-        public IEnumerable<FsEntry> FileList;
+        FileList = ReadFsEntries(reader);
+    }
 
-        public override void Read(Reader reader)
+    protected static IEnumerable<FsEntry> ReadFsEntries(Reader reader)
+    {
+        while (true)
         {
-            FileList = ReadFsEntries(reader);
-        }
-
-        protected IEnumerable<FsEntry> ReadFsEntries(Reader reader)
-        {
-            while (true)
+            var fsEntry = reader.ReadFsEntry();
+            if (fsEntry.IsEmpty)
             {
-                var fsEntry = reader.ReadFsEntry();
-                if (fsEntry.IsEmpty)
-                {
-                    break;
-                }
-                yield return fsEntry;
+                break;
             }
+            yield return fsEntry;
         }
+    }
 
-        public override void Write(Writer writer)
+    public override void Write(Writer writer)
+    {
+        Debug.Assert(FileList != null);
+        foreach (var fsEntry in FileList)
         {
-            foreach (var fsEntry in FileList)
-            {
-                writer.WriteFsEntry(fsEntry);
-            }
-            writer.WriteFsEntry(FsEntry.Empty);
+            writer.WriteFsEntry(fsEntry);
         }
-
-        public ScanResponse(ILogger logger) : base(logger)
-        {
-        }
+        writer.WriteFsEntry(FsEntry.Empty);
     }
 }

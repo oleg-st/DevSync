@@ -1,21 +1,16 @@
 ﻿using DevSyncLib.Logger;
 
-namespace DevSyncLib.Command
+namespace DevSyncLib.Command;
+
+public class ScanRequest(ILogger logger) : Packet(logger)
 {
-    public class ScanRequest : Packet
+    public override short Signature => 3;
+
+    public override void Read(Reader reader)
     {
-        public override short Signature => 3;
+    }
 
-        public override void Read(Reader reader)
-        {
-        }
-
-        public override void Write(Writer writer)
-        {
-        }
-
-        public ScanRequest(ILogger logger) : base(logger)
-        {
-        }
+    public override void Write(Writer writer)
+    {
     }
 }

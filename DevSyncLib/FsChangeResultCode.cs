@@ -1,10 +1,9 @@
-﻿namespace DevSyncLib
+﻿namespace DevSyncLib;
+
+public enum FsChangeResultCode
 {
-    public enum FsChangeResultCode
-    {
-        Ok,
-        Error,
-        SenderError,
-        None
-    }
+    Ok,
+    Error,
+    SenderError,
+    None
 }
