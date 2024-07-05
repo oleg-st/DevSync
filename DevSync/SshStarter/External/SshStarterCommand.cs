@@ -12,7 +12,7 @@ namespace DevSync.SshStarter.External
 
         public event EventHandler OnExit;
 
-        public int ExitCode { get; private set; }
+        public int? ExitCode { get; private set; }
 
         public string Error { get; private set; }
 

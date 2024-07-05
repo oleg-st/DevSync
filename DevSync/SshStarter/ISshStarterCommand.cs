@@ -7,7 +7,7 @@ namespace DevSync.SshStarter
     {
         event EventHandler OnExit;
 
-        int ExitCode { get; }
+        int? ExitCode { get; }
 
         string Error { get; }
 

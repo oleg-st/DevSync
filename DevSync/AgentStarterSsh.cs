@@ -312,7 +312,7 @@ namespace DevSync
                     sshStarter.RunCommand($"COMPlus_EnableDiagnostics=0 dotnet {DeployPath}/DevSyncAgent.dll");
                 sshCommand.OnExit += (sender, args) =>
                 {
-                    SetAgentExitCode(sshCommand.ExitCode, sshCommand.Error);
+                    SetAgentExitCode(sshCommand.ExitCode ?? -1, sshCommand.Error);
                     // use cleanup on other thread to prevent race condition
                     CleanupDeferred();
                 };

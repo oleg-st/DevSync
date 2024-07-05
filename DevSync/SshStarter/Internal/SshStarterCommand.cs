@@ -1,4 +1,5 @@
 ﻿using Renci.SshNet;
+using Renci.SshNet.Common;
 using System;
 using System.IO;
 
@@ -8,12 +9,14 @@ namespace DevSync.SshStarter.Internal
     {
         private readonly SshCommand _sshCommand;
 
-        public int ExitCode { get; set; }
+        public int? ExitCode { get; set; }
         public string Error { get; set; }
 
         public event EventHandler OnExit;
 
         private readonly IAsyncResult _asyncResult;
+
+        private Stream _inputStream;
 
         public SshStarterCommand(SshCommand sshCommand)
         {
@@ -66,7 +69,7 @@ namespace DevSync.SshStarter.Internal
             {
                 lock (this)
                 {
-                    return _sshCommand.InputStream;
+                    return _inputStream ??= _sshCommand.CreateInputStream();
                 }
             }
         }
