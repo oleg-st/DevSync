@@ -132,8 +132,8 @@ public class SyncOptions
     [MemberNotNullWhen(true, nameof(Host))]
     public bool IsFilled => !string.IsNullOrWhiteSpace(SourcePath) &&
                             !string.IsNullOrWhiteSpace(DestinationPath) &&
-                            !string.IsNullOrWhiteSpace(UserName) &&
-                            !string.IsNullOrWhiteSpace(Host);
+                            UserName != null &&
+                            Host != null;
 
     public override string ToString() => 
         $"{SourcePath} -> {UserName}@{Host}:{DestinationPath}, {ExcludeList.Count} excludes{(Port != DefaultPort ? $", port {Port}" : "")}{(DeployAgent ? ", deploy" : "")}{(ExternalSsh ? ", external ssh" : "")}{(AuthorizeKey ? ", authorize key" : "")}";
